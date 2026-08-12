@@ -101,13 +101,13 @@ class PeerCheckerBot:
                 return func(message, *args, **kwargs)
             return wrapper
 
-        @self.bot.message_handler(commands=["start"])
+        @self.bot.message_handler(commands=["start", "help"])
         @admin_only
         def handle_start(message: types.Message) -> None:
             text = (
                 "Привет! Я бот поиска и валидации новых пиров Школы 21.\n\n"
                 "Доступные команды:\n"
-                "/start — Справка и приветствие\n"
+                "/start, /help — Справка и приветствие\n"
                 "/start_monitoring — Запуск автоматического фонового мониторинга\n"
                 "/stop_monitoring — Остановка фонового мониторинга\n"
                 "/check_now — Запуск проверки вне очереди\n"

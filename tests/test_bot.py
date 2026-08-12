@@ -51,6 +51,20 @@ def test_handle_start_unauthorized(bot_app):
     assert "У вас нет прав" in args[1]
 
 
+def test_handle_help_authorized(bot_app):
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/help"
+
+    handler = [h for h in bot_app.bot.message_handlers if "help" in h["filters"]["commands"]][0]
+    handler["function"](msg)
+
+    assert bot_app.bot.reply_to.called
+    args, kwargs = bot_app.bot.reply_to.call_args
+    assert "/help" in args[1]
+    assert "Привет! Я бот поиска и валидации" in args[1]
+
+
 def test_escape_markdown():
     from app.bot import escape_markdown
     assert escape_markdown("john_doe*test`[1]") == r"john\_doe\*test\`\[1]"
