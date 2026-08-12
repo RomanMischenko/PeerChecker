@@ -61,12 +61,13 @@ class PeerValidator:
         class_name = info.get("className") if isinstance(info, dict) else None
 
         # Wave / className filter: if target_class_names is set, skip peers not belonging to the wave
+        display_class = class_name if class_name else "Не указана"
         if self.target_class_names:
             peer_class = (class_name or "").strip().upper()
             is_match = peer_class in self.target_class_names
             expected_str = ", ".join(self.target_class_names)
             logger.info(
-                f"[{login}] GET /v1/participants/{login} -> Wave className: '{class_name}' (Match: {'YES' if is_match else 'NO, expected ' + expected_str})"
+                f"[{login}] GET /v1/participants/{login} -> Wave className: '{display_class}' (Match: {'YES' if is_match else 'NO, expected ' + expected_str})"
             )
             if not is_match:
                 logger.info(f"[{login}] RESULT: SKIPPED_WAVE | Skipping project & feedback checks (Wave mismatch)")
@@ -74,16 +75,16 @@ class PeerValidator:
                     "login": login,
                     "status": "SKIPPED_WAVE",
                     "is_skipped": True,
-                    "class_name": class_name,
+                    "class_name": display_class,
                     "total_xp": 0,
                     "logtime": 0.0,
                     "accepted_projects_count": 0,
-                    "suspicion_reasons": [f"Волна '{class_name}' не совпадает с целевой '{expected_str}'"],
-                    "suspicion_reason_text": f"Пропущена волна: {class_name}",
+                    "suspicion_reasons": [f"Волна '{display_class}' не совпадает с целевой '{expected_str}'"],
+                    "suspicion_reason_text": f"Пропущена волна: {display_class}",
                     "details": {"info": info},
                 }
         else:
-            logger.info(f"[{login}] GET /v1/participants/{login} -> Wave className: '{class_name}'")
+            logger.info(f"[{login}] GET /v1/participants/{login} -> Wave className: '{display_class}'")
 
         logtime = api_client.get_participant_logtime(login)
         xp_history = api_client.get_participant_xp_history(login)

@@ -93,5 +93,17 @@ def test_validate_peer_null_feedback():
     assert "Оценки фидбека проверяющего равны 0" in result["suspicion_reason_text"]
 
 
+def test_validate_peer_none_class_name():
+    mock_api = MagicMock()
+    mock_api.get_participant_info.return_value = {"login": "no_class_peer", "className": None}
+
+    validator = PeerValidator(target_class_names=["26_08_NN"])
+    result = validator.validate_peer(mock_api, "no_class_peer")
+
+    assert result["status"] == "SKIPPED_WAVE"
+    assert result["class_name"] == "Не указана"
+    assert "Волна 'Не указана'" in result["suspicion_reasons"][0]
+
+
 
 

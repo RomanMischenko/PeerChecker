@@ -34,6 +34,17 @@ class S21ApiClient:
         self.token_expires_at: float = 0.0
         self.session = requests.Session()
 
+    def close(self) -> None:
+        """Close underlying requests Session."""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self) -> "S21ApiClient":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
     def authenticate(self) -> str:
         """Authenticate against Keycloak and retrieve bearer token."""
         payload = {
@@ -50,13 +61,19 @@ class S21ApiClient:
             resp.raise_for_status()
             data = resp.json()
             token = data.get("access_token")
-            expires_in = data.get("expires_in", 300)
+            raw_expires = data.get("expires_in")
+            try:
+                expires_in_val = float(raw_expires) if raw_expires is not None else 300.0
+            except (ValueError, TypeError):
+                expires_in_val = 300.0
+
             if not token:
                 raise S21ApiError("No access_token found in Keycloak response.")
 
             self.access_token = token
             # Expire slightly earlier than TTL to be safe
-            self.token_expires_at = time.time() + float(expires_in) - 30
+            buffer_sec = min(30.0, max(5.0, expires_in_val / 2))
+            self.token_expires_at = time.time() + expires_in_val - buffer_sec
             logger.info("Successfully authenticated with S21 Keycloak.")
             return token
         except requests.RequestException as e:
@@ -80,8 +97,8 @@ class S21ApiClient:
                 "Accept": "application/json",
             }
 
-            # Small delay between requests to avoid rate limit
-            time.sleep(self.request_delay)
+            if self.request_delay > 0:
+                time.sleep(self.request_delay)
 
             try:
                 resp = self.session.request(method, url, headers=headers, params=params, timeout=20)

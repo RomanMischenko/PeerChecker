@@ -1,9 +1,10 @@
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +15,20 @@ class Storage:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def connection_scope(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def init_db(self) -> None:
         """Initialize database schema if tables do not exist."""
         logger.info(f"Initializing SQLite database schema at {self.db_path}")
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA journal_mode=WAL;")
             # Table: peers
@@ -58,7 +64,7 @@ class Storage:
 
     def get_known_logins(self) -> set[str]:
         """Retrieve set of all logins currently present in DB."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT login FROM peers")
             rows = cursor.fetchall()
@@ -66,7 +72,7 @@ class Storage:
 
     def is_known_peer(self, login: str) -> bool:
         """Check if login already exists in DB."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM peers WHERE login = ?", (login,))
             return cursor.fetchone() is not None
@@ -81,7 +87,7 @@ class Storage:
             return
 
         now = datetime.now().isoformat()
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             for p in peers:
                 cursor.execute(
@@ -129,7 +135,7 @@ class Storage:
 
         now = datetime.now().isoformat()
         reason_text = "Изменено вручную администратором" if is_manual else ""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -147,7 +153,7 @@ class Storage:
 
     def get_peer(self, login: str) -> dict[str, Any] | None:
         """Retrieve a single peer record by login."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM peers WHERE login = ?", (login,))
             row = cursor.fetchone()
@@ -163,7 +169,7 @@ class Storage:
 
     def get_peers_by_tribe(self, tribe_id: int) -> list[dict[str, Any]]:
         """Retrieve all peers for a given tribe."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM peers WHERE tribe_id = ? ORDER BY login ASC", (tribe_id,))
             rows = cursor.fetchall()
@@ -171,7 +177,7 @@ class Storage:
 
     def get_all_peers(self) -> list[dict[str, Any]]:
         """Retrieve all peers in the database."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM peers ORDER BY tribe_id ASC, login ASC")
             rows = cursor.fetchall()
@@ -198,16 +204,15 @@ class Storage:
 
         query += " ORDER BY tribe_id ASC, status ASC, login ASC"
 
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute(query, params)
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
 
-
     def get_stats(self) -> dict[str, Any]:
         """Calculate aggregated peer stats grouped by tribe and status."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -243,7 +248,7 @@ class Storage:
     def log_check_run(self, new_peers_count: int, status_summary: str) -> int:
         """Record a monitoring check run entry."""
         now = datetime.now().isoformat()
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO check_logs (timestamp, new_peers_count, status_summary) VALUES (?, ?, ?)",
@@ -254,7 +259,7 @@ class Storage:
 
     def get_last_check_info(self) -> dict[str, Any] | None:
         """Retrieve the most recent check log entry."""
-        with self._get_connection() as conn:
+        with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM check_logs ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
