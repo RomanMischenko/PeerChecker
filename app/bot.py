@@ -412,13 +412,16 @@ class PeerCheckerBot:
                     logger.info(f"Found {len(unprocessed_logins)} new (unprocessed) logins for tribe {tribe_name}.")
 
                     tribe_new_peers = []
-                    for login in unprocessed_logins:
+                    for idx, login in enumerate(unprocessed_logins):
                         if is_background and self.stop_event.is_set():
                             logger.info("Scan aborted by stop signal during peer validation.")
                             return
 
                         try:
-                            val_res = self.validator.validate_peer(api_client, login)
+                            val_res = self.validator.validate_peer(
+                                api_client, login, current_index=idx + 1, total_count=len(unprocessed_logins)
+                            )
+
                             val_res["tribe_id"] = tribe_id
                             val_res["tribe_name"] = tribe_name
                             val_res["xp"] = val_res["total_xp"]
