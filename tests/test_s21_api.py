@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from app.s21_api import S21ApiClient
+from app.s21_api import S21ApiClient, S21ApiError
 
 
 @patch("requests.Session.post")
@@ -89,4 +89,29 @@ def test_s21_api_context_manager():
         mock_session = MagicMock()
         client.session = mock_session
     mock_session.close.assert_called_once()
+
+
+@patch("requests.Session.request")
+@patch("requests.Session.post")
+def test_fast_fail_on_404_error(mock_post, mock_request):
+    import pytest
+    import requests
+
+    mock_auth_resp = MagicMock()
+    mock_auth_resp.json.return_value = {"access_token": "mocked_token", "expires_in": 3600}
+    mock_post.return_value = mock_auth_resp
+
+    mock_resp_404 = MagicMock()
+    mock_resp_404.status_code = 404
+    mock_resp_404.text = "Not found"
+    mock_resp_404.raise_for_status.side_effect = requests.HTTPError("404 Not Found", response=mock_resp_404)
+
+    mock_request.return_value = mock_resp_404
+
+    client = S21ApiClient("login", "pass", request_delay=0.0, max_retries=3)
+    with pytest.raises(S21ApiError, match="HTTP 404 error"):
+        client.get_participant_info("unknown_peer")
+
+    assert mock_request.call_count == 1
+
 

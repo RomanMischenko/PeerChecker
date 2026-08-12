@@ -152,5 +152,35 @@ def test_restore_interrupted_check_on_startup():
             assert app is not None
 
 
+def test_escape_code_block():
+    from app.bot import escape_code_block
+    assert escape_code_block("26_08_NN") == "26_08_NN"
+    assert escape_code_block("hello`world") == "hello'world"
+    assert escape_code_block("") == ""
+
+
+def test_handle_export_skipped_wave_only(bot_app):
+    bot_app.storage.save_peer({
+        "login": "skipped_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SKIPPED_WAVE",
+        "xp": 0,
+        "logtime": 0.0,
+    })
+
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/export"
+
+    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"]["commands"]][0]
+    handler["function"](msg)
+
+    assert bot_app.bot.reply_to.called
+    calls = bot_app.bot.reply_to.call_args_list
+    assert any("нет проверенных" in str(call) for call in calls)
+
+
+
 
 

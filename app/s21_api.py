@@ -130,9 +130,8 @@ class S21ApiClient:
                 return resp.json()
 
             except requests.HTTPError as e:
-                if attempt == self.max_retries:
-                    logger.error(f"HTTP error {resp.status_code} for {endpoint}: {resp.text}")
-                    raise S21ApiError(f"HTTP {resp.status_code} error: {e}") from e
+                logger.error(f"HTTP error {resp.status_code} for {endpoint}: {resp.text}")
+                raise S21ApiError(f"HTTP {resp.status_code} error: {e}") from e
             except requests.RequestException as e:
                 if attempt == self.max_retries:
                     logger.error(f"Request exception for {endpoint}: {e}")

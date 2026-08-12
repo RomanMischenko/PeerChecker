@@ -26,6 +26,13 @@ def escape_markdown(text: str) -> str:
     return re.sub(r"([_*`\[])", r"\\\1", text)
 
 
+def escape_code_block(text: str) -> str:
+    """Sanitize text to be safely placed inside inline code block `text` in Markdown v1."""
+    if not text:
+        return ""
+    return text.replace("`", "'")
+
+
 def chunk_text(text: str, max_length: int = 4000) -> list[str]:
     """Split text into chunks of maximum max_length without breaking markdown lines if possible."""
     if not text:
@@ -150,194 +157,224 @@ class PeerCheckerBot:
         @self.bot.message_handler(commands=["status"])
         @admin_only
         def handle_status(message: types.Message) -> None:
-            stats = self.storage.get_stats()
-            last_check = self.storage.get_last_check_info()
+            try:
+                stats = self.storage.get_stats()
+                last_check = self.storage.get_last_check_info()
 
-            status_str = "Запущен" if self.monitoring_active else "Остановлен"
-            last_check_str = last_check["timestamp"] if last_check else "Еще не проводилась"
+                status_str = "Запущен" if self.monitoring_active else "Остановлен"
+                last_check_str = last_check["timestamp"] if last_check else "Еще не проводилась"
 
-            text = (
-                f"**Текущий статус бота PeerChecker**\n\n"
-                f"• **Мониторинг:** {status_str}\n"
-                f"• **Интервал:** {self.config.CHECK_INTERVAL_MINUTES} мин.\n"
-                f"• **Последняя проверка:** `{escape_markdown(last_check_str)}`\n"
-                f"• **Всего пиров в БД:** {stats.get('total', 0)}\n"
-                f"  - Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
-                f"  - Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n\n"
-                f"**По трайбам:**\n"
-            )
+                text = (
+                    f"**Текущий статус бота PeerChecker**\n\n"
+                    f"• **Мониторинг:** {status_str}\n"
+                    f"• **Интервал:** {self.config.CHECK_INTERVAL_MINUTES} мин.\n"
+                    f"• **Последняя проверка:** `{escape_code_block(last_check_str)}`\n"
+                    f"• **Всего пиров в БД:** {stats.get('total', 0)}\n"
+                    f"  - Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
+                    f"  - Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n"
+                )
+                if stats.get("total_skipped_wave", 0) > 0:
+                    text += f"  - Пропущенные по волне (`SKIPPED_WAVE`): {stats.get('total_skipped_wave', 0)}\n"
+                text += "\n**По трайбам:**\n"
 
-            by_tribe = stats.get("by_tribe", {})
-            if not by_tribe:
-                text += "_Данных по трайбам пока нет_\n"
-            else:
-                for tid, tdata in by_tribe.items():
-                    text += (
-                        f"• **{escape_markdown(tdata['tribe_name'])}** (ID {tid}): "
-                        f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']})\n"
-                    )
+                by_tribe = stats.get("by_tribe", {})
+                if not by_tribe:
+                    text += "_Данных по трайбам пока нет_\n"
+                else:
+                    for tid, tdata in by_tribe.items():
+                        text += (
+                            f"• **{escape_markdown(tdata['tribe_name'])}** (ID {tid}): "
+                            f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']})\n"
+                        )
 
-            self.bot.reply_to(message, text, parse_mode="Markdown")
+                self.bot.reply_to(message, text, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Error handling /status: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
 
         @self.bot.message_handler(commands=["peer"])
         @admin_only
         def handle_peer_info(message: types.Message) -> None:
-            parts = message.text.strip().split()
-            if len(parts) < 2:
-                self.bot.reply_to(message, "Укажите логин пира. Пример: `/peer ivanov-ivan`", parse_mode="Markdown")
-                return
+            try:
+                parts = message.text.strip().split()
+                if len(parts) < 2:
+                    self.bot.reply_to(message, "Укажите логин пира. Пример: `/peer ivanov-ivan`", parse_mode="Markdown")
+                    return
 
-            login = parts[1].strip()
-            peer = self.storage.get_peer(login)
-            if not peer:
-                self.bot.reply_to(message, f"Пир `{escape_markdown(login)}` не найден в базе данных.", parse_mode="Markdown")
-                return
+                login = parts[1].strip()
+                peer = self.storage.get_peer(login)
+                if not peer:
+                    self.bot.reply_to(message, f"Пир `{escape_code_block(login)}` не найден в базе данных.", parse_mode="Markdown")
+                    return
 
-            self._send_peer_card(message.chat.id, peer)
+                self._send_peer_card(message.chat.id, peer)
+            except Exception as e:
+                logger.error(f"Error handling /peer: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
 
         @self.bot.message_handler(commands=["set_status", "setstatus"])
         @admin_only
         def handle_set_status(message: types.Message) -> None:
-            parts = message.text.strip().split()
-            if len(parts) < 3:
-                self.bot.reply_to(
-                    message,
-                    "Формат команды: `/set_status <login> <verified|suspicious>`",
-                    parse_mode="Markdown",
-                )
-                return
+            try:
+                parts = message.text.strip().split()
+                if len(parts) < 3:
+                    self.bot.reply_to(
+                        message,
+                        "Формат команды: `/set_status <login> <verified|suspicious>`",
+                        parse_mode="Markdown",
+                    )
+                    return
 
-            login = parts[1].strip()
-            new_status = parts[2].strip().upper()
+                login = parts[1].strip()
+                new_status = parts[2].strip().upper()
 
-            if new_status not in ("VERIFIED", "SUSPICIOUS"):
-                self.bot.reply_to(message, "Статус должен быть `VERIFIED` или `SUSPICIOUS`.", parse_mode="Markdown")
-                return
+                if new_status not in ("VERIFIED", "SUSPICIOUS"):
+                    self.bot.reply_to(message, "Статус должен быть `VERIFIED` или `SUSPICIOUS`.", parse_mode="Markdown")
+                    return
 
-            updated = self.storage.update_peer_status(login, new_status, is_manual=True)
-            if updated:
-                self.bot.reply_to(
-                    message,
-                    f"Статус пира `{escape_markdown(login)}` успешно изменен на **{new_status}** (ручная модерация).",
-                    parse_mode="Markdown",
-                )
-            else:
-                self.bot.reply_to(message, f"Пир `{escape_markdown(login)}` не найден в базе данных.", parse_mode="Markdown")
+                updated = self.storage.update_peer_status(login, new_status, is_manual=True)
+                if updated:
+                    self.bot.reply_to(
+                        message,
+                        f"Статус пира `{escape_code_block(login)}` успешно изменен на **{new_status}** (ручная модерация).",
+                        parse_mode="Markdown",
+                    )
+                else:
+                    self.bot.reply_to(message, f"Пир `{escape_code_block(login)}` не найден в базе данных.", parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Error handling /set_status: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
 
         @self.bot.message_handler(commands=["peers", "list"])
         @admin_only
         def handle_peers(message: types.Message) -> None:
-            parts = message.text.strip().split()[1:]
-
-            filter_status = None
-            filter_tribe = None
-
-            for arg in parts:
-                arg_upper = arg.upper()
-                if arg_upper in ("VERIFIED", "SUSPICIOUS"):
-                    filter_status = arg_upper
-                elif arg_upper != "ALL":
-                    filter_tribe = arg
-
-            peers = self.storage.get_filtered_peers(tribe_id=filter_tribe, status=filter_status)
-            if not peers:
-                self.bot.reply_to(message, "Пиров по данному запросу не найдено.", parse_mode="Markdown")
-                return
-
-            filter_desc = []
-            if filter_tribe:
-                filter_desc.append(f"трайб: `{escape_markdown(filter_tribe)}`")
-            if filter_status:
-                filter_desc.append(f"статус: `{filter_status}`")
-            desc_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
-
-            now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"peers_{now_str}.txt"
-            temp_path = os.path.join(tempfile.gettempdir(), filename)
-
             try:
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
-                    if desc_str:
-                        f.write(f"Фильтры: {desc_str}\n")
-                    f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
-                    for p in peers:
-                        manual_str = " [ручной статус]" if p.get("is_manual") else ""
-                        f.write(
-                            f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
-                            f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                        )
-                        if p.get("suspicion_reason"):
-                            f.write(f"  Причина: {p['suspicion_reason']}\n")
+                parts = message.text.strip().split()[1:]
 
-                v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
-                s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
+                filter_status = None
+                filter_tribe = None
 
-                caption = (
-                    f"**Список пиров из БД{desc_str}**\n\n"
-                    f"• Всего найдено: **{len(peers)}** чел.\n"
-                    f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
-                    f"Подробный список прикреплен в файле."
-                )
+                for arg in parts:
+                    arg_upper = arg.upper()
+                    if arg_upper in ("VERIFIED", "SUSPICIOUS"):
+                        filter_status = arg_upper
+                    elif arg_upper != "ALL":
+                        filter_tribe = arg
 
-                with open(temp_path, "rb") as doc:
-                    self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
-            finally:
+                peers = self.storage.get_filtered_peers(tribe_id=filter_tribe, status=filter_status)
+                if not peers:
+                    self.bot.reply_to(message, "Пиров по данному запросу не найдено.", parse_mode="Markdown")
+                    return
+
+                filter_desc = []
+                if filter_tribe:
+                    filter_desc.append(f"трайб: `{escape_code_block(filter_tribe)}`")
+                if filter_status:
+                    filter_desc.append(f"статус: `{filter_status}`")
+                desc_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
+
+                now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"peers_{now_str}.txt"
+                temp_path = os.path.join(tempfile.gettempdir(), filename)
+
                 try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
+                        if desc_str:
+                            f.write(f"Фильтры: {desc_str}\n")
+                        f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
+                        for p in peers:
+                            manual_str = " [ручной статус]" if p.get("is_manual") else ""
+                            f.write(
+                                f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
+                                f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                            )
+                            if p.get("suspicion_reason"):
+                                f.write(f"  Причина: {p['suspicion_reason']}\n")
+
+                    v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
+                    s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
+
+                    caption = (
+                        f"**Список пиров из БД{desc_str}**\n\n"
+                        f"• Всего найдено: **{len(peers)}** чел.\n"
+                        f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
+                        f"Подробный список прикреплен в файле."
+                    )
+
+                    with open(temp_path, "rb") as doc:
+                        self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
+                finally:
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Error handling /peers: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
 
         @self.bot.message_handler(commands=["export", "export_txt"])
         @admin_only
         def handle_export(message: types.Message) -> None:
-            peers = self.storage.get_all_peers()
-            if not peers:
-                self.bot.reply_to(message, "❌ В базе данных пока нет сохраненных пиров.", parse_mode="Markdown")
-                return
-
-            self.bot.reply_to(message, "📁 **Формирую файлы экспорта списка пиров по трайбам...**", parse_mode="Markdown")
-
-            now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
-            temp_dir = tempfile.mkdtemp()
-            files_to_send = []
-
             try:
-                by_tribe: dict[int, list[dict[str, Any]]] = {}
-                for p in peers:
-                    by_tribe.setdefault(p["tribe_id"], []).append(p)
+                peers = self.storage.get_all_peers()
+                if not peers:
+                    self.bot.reply_to(message, "❌ В базе данных пока нет сохраненных пиров.", parse_mode="Markdown")
+                    return
 
-                for tid, tpeers in by_tribe.items():
-                    tname = tpeers[0]["tribe_name"]
-                    verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
-                    suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                self.bot.reply_to(message, "📁 **Формирую файлы экспорта списка пиров по трайбам...**", parse_mode="Markdown")
 
-                    if verified_peers:
-                        v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
-                        with open(v_path, "w", encoding="utf-8") as f:
-                            f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
-                            f.write(f"Дата: {now_str}\n\n")
-                            for p in verified_peers:
-                                f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
-                        files_to_send.append(v_path)
+                now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+                temp_dir = tempfile.mkdtemp()
+                files_to_send = []
 
-                    if suspicious_peers:
-                        s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
-                        with open(s_path, "w", encoding="utf-8") as f:
-                            f.write(f"=== Подозрительные пиры (SUSPICIOUS) — Трайб {tname} (ID {tid}) ===\n")
-                            f.write(f"Дата: {now_str}\n\n")
-                            for p in suspicious_peers:
-                                f.write(
-                                    f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                                    f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
-                                )
-                        files_to_send.append(s_path)
+                try:
+                    by_tribe: dict[int, list[dict[str, Any]]] = {}
+                    for p in peers:
+                        by_tribe.setdefault(p["tribe_id"], []).append(p)
 
-                for fp in files_to_send:
-                    with open(fp, "rb") as doc:
-                        self.bot.send_document(message.chat.id, doc)
-            finally:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                    for tid, tpeers in by_tribe.items():
+                        tname = tpeers[0]["tribe_name"]
+                        verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
+                        suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+
+                        if verified_peers:
+                            v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
+                            with open(v_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
+                                f.write(f"Дата: {now_str}\n\n")
+                                for p in verified_peers:
+                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                            files_to_send.append(v_path)
+
+                        if suspicious_peers:
+                            s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
+                            with open(s_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Подозрительные пиры (SUSPICIOUS) — Трайб {tname} (ID {tid}) ===\n")
+                                f.write(f"Дата: {now_str}\n\n")
+                                for p in suspicious_peers:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
+                                    )
+                            files_to_send.append(s_path)
+
+                    if not files_to_send:
+                        self.bot.reply_to(
+                            message,
+                            "ℹ️ **Экспорт завершен:** В базе данных нет проверенных (`VERIFIED`) или подозрительных (`SUSPICIOUS`) пиров для отчета.",
+                            parse_mode="Markdown",
+                        )
+                        return
+
+                    for fp in files_to_send:
+                        with open(fp, "rb") as doc:
+                            self.bot.send_document(message.chat.id, doc)
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.error(f"Error handling /export: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при экспорте пиров: {e}")
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("set_status:"))
         def handle_status_callback(call: types.CallbackQuery) -> None:
@@ -376,13 +413,13 @@ class PeerCheckerBot:
         suspicion_reason_val = peer.get("suspicion_reason") or "Нет"
 
         text = (
-            f"👤 **Карточка пира `{escape_markdown(login)}`**\n\n"
+            f"👤 **Карточка пира `{escape_code_block(login)}`**\n\n"
             f"• **Трайб:** {escape_markdown(peer['tribe_name'])} (ID {peer['tribe_id']})\n"
             f"• **Статус:** {status_emoji}{manual_flag}\n"
             f"• **Суммарный XP:** {peer.get('xp', 0)}\n"
             f"• **Логтайм:** {peer.get('logtime', 0.0):.2f} ч/нед\n"
-            f"• **Причина / Примечание:** `{escape_markdown(suspicion_reason_val)}`\n"
-            f"• **Первое обнаружение:** `{escape_markdown(first_seen_val)}`\n"
+            f"• **Причина / Примечание:** `{escape_code_block(suspicion_reason_val)}`\n"
+            f"• **Первое обнаружение:** `{escape_code_block(first_seen_val)}`\n"
         )
 
         markup = types.InlineKeyboardMarkup()
@@ -404,8 +441,9 @@ class PeerCheckerBot:
         self.monitoring_active = True
         self.storage.set_monitoring_active(True)
         self.stop_event.clear()
-        self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
-        self.monitoring_thread.start()
+        thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.monitoring_thread = thread
+        thread.start()
 
     def stop_monitoring_loop(self) -> None:
         """Stop background monitoring thread and update persistent storage."""
@@ -458,6 +496,11 @@ class PeerCheckerBot:
 
     def run_check_and_notify(self, is_background: bool = False) -> None:
         """Core monitoring logic: queries S21 OpenAPI, skips existing DB peers, validates new peers, and notifies admins."""
+        current_t = threading.current_thread()
+        if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
+            logger.info("Scan aborted by stop signal or stale thread.")
+            return
+
         if not self.check_lock.acquire(blocking=False):
             logger.warning("Check already in progress. Skipping duplicate run.")
             return
@@ -479,16 +522,16 @@ class PeerCheckerBot:
                 total_unprocessed_count = 0
 
                 for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
-                    if is_background and self.stop_event.is_set():
-                        logger.info("Scan aborted by stop signal.")
+                    if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
+                        logger.info("Scan aborted by stop signal or stale thread.")
                         return
 
                     try:
                         participant_logins = api_client.get_coalition_participants(
                             tribe_id, stop_event=self.stop_event if is_background else None
                         )
-                        if is_background and self.stop_event.is_set():
-                            logger.info("Scan aborted by stop signal.")
+                        if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
+                            logger.info("Scan aborted by stop signal or stale thread.")
                             return
 
                         logger.info(f"Fetched {len(participant_logins)} total logins for tribe {tribe_name} ({tribe_id}).")
@@ -500,8 +543,8 @@ class PeerCheckerBot:
 
                         tribe_new_peers = []
                         for idx, login in enumerate(unprocessed_logins):
-                            if is_background and self.stop_event.is_set():
-                                logger.info("Scan aborted by stop signal during peer validation.")
+                            if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
+                                logger.info("Scan aborted by stop signal or stale thread during peer validation.")
                                 return
 
                             try:
@@ -543,16 +586,16 @@ class PeerCheckerBot:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
                             f"• **Результат:** Новых логинов на платформе не обнаружено.\n"
-                            f"• **Последняя проверка:** `{now_str}`"
+                            f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
                         log_msg = "Новых логинов на платформе не обнаружено"
                     else:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                            f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
+                            f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
                             f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
                             f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
-                            f"• **Последняя проверка:** `{now_str}`"
+                            f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
                         log_msg = f"Проверено {total_unprocessed_count} новых пиров, пиров целевой волны ({target_wave_str}) не обнаружено"
 
@@ -564,8 +607,8 @@ class PeerCheckerBot:
                 total_new = len(all_new_peers)
                 summary_text = (
                     f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
-                    f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
-                    f"• **Время проверки:** `{now_str}`\n"
+                    f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
+                    f"• **Время проверки:** `{escape_code_block(now_str)}`\n"
                 )
                 if skipped_wave_count > 0:
                     summary_text += f"• **Пропущено из других волн:** {skipped_wave_count} чел.\n"

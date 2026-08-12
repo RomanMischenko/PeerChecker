@@ -14,6 +14,7 @@ A peer is evaluated based on three strict criteria:
    - Fetched via `GET /v1/participants/{login}` (`className` field, e.g. `26_08_NN`).
    - If `TARGET_CLASS_NAME` is configured and the peer's `className` does not match, validation short-circuits with status `SKIPPED_WAVE`. Project and feedback API calls are skipped to conserve API rate limits.
    - Skipped wave peers are saved to SQLite DB so they are remembered in `known_logins` and omitted from subsequent scans.
+   - `total_xp` is retrieved directly from the `expValue` profile attribute returned by `GET /v1/participants/{login}` without redundant experience-history API calls.
 
 2. **Accepted Target Projects:**
    - Checked via `GET /v1/participants/{login}/projects/{projectId}` across `TARGET_PROJECT_IDS` (default list: `73187, 73188, 73189, 73328, 73190, 73191, 73192, 73193, 73194, 73195, 73196` representing Week 01 & Week 02 projects).
@@ -30,12 +31,13 @@ A peer is evaluated based on three strict criteria:
 
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.
+- Aggregated database statistics (`get_stats()`) accurately separate `VERIFIED`, `SUSPICIOUS`, and `SKIPPED_WAVE` metrics.
 - Peer records are upserted via `ON CONFLICT(login) DO UPDATE`, preserving manual moderation flags (`is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END`).
 - Bot state persistence (`bot_state` table) saves flags such as `monitoring_active`. Upon restart, `PeerCheckerBot` automatically restores active states and resumes background monitoring seamless loop if enabled prior to shutdown or crash.
 
 ### 3. API Client Stability (`S21ApiClient`)
 - Reuses a persistent `requests.Session()` HTTP connection pool with context manager support (`__enter__`/`__exit__` and `close()`) to avoid TCP socket leaks.
-- Features exponential backoff retries for transient 5xx HTTP server errors and rate limits (429), plus automatic bearer token refresh on 401 Unauthorized responses. Safe parsing for null/missing `expires_in` values from Keycloak.
+- Features exponential backoff retries for transient 5xx HTTP server errors and rate limits (429), fast-failing on non-retryable 4xx HTTP errors (400, 403, 404), plus automatic bearer token refresh on 401 Unauthorized responses. Safe parsing for null/missing `expires_in` values from Keycloak.
 
 ---
 
