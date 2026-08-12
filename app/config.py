@@ -44,6 +44,20 @@ def parse_coalitions(raw_value: str) -> dict[int, str]:
     return coalitions if coalitions else default_coalitions
 
 
+def parse_project_ids(raw_value: str) -> list[int]:
+    """Parse comma-separated string of project IDs."""
+    default_ids = [73187, 73188, 73189, 73328, 73190, 73191, 73192, 73193, 73194, 73195, 73196]
+    if not raw_value:
+        return default_ids
+
+    result = []
+    for item in raw_value.split(","):
+        cleaned = item.strip()
+        if cleaned.isdigit():
+            result.append(int(cleaned))
+    return result if result else default_ids
+
+
 @dataclass
 class Config:
     TELEGRAM_BOT_TOKEN: str = field(
@@ -75,7 +89,14 @@ class Config:
     MIN_LOGTIME: float = field(
         default_factory=lambda: float(os.getenv("MIN_LOGTIME", "0.0"))
     )
+    TARGET_PROJECT_IDS: list[int] = field(
+        default_factory=lambda: parse_project_ids(os.getenv("TARGET_PROJECT_IDS", ""))
+    )
+    MIN_ACCEPTED_PROJECTS: int = field(
+        default_factory=lambda: int(os.getenv("MIN_ACCEPTED_PROJECTS", "3"))
+    )
     BASE_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
+
     DATA_DIR: Path = field(
         default_factory=lambda: Path(os.getenv("DATA_DIR", "data"))
     )

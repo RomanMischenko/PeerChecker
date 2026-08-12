@@ -23,8 +23,11 @@ class PeerCheckerBot:
         self.storage = storage
         self.bot = telebot.TeleBot(self.config.TELEGRAM_BOT_TOKEN)
         self.validator = PeerValidator(
-            min_xp=self.config.MIN_XP, min_logtime=self.config.MIN_LOGTIME
+            target_project_ids=self.config.TARGET_PROJECT_IDS,
+            min_accepted_projects=self.config.MIN_ACCEPTED_PROJECTS,
+            min_logtime=self.config.MIN_LOGTIME,
         )
+
 
         self.monitoring_active = False
         self.monitoring_thread: threading.Thread | None = None

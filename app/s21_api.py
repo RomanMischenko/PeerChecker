@@ -208,3 +208,13 @@ class S21ApiClient:
         except S21ApiError as e:
             logger.warning(f"Could not fetch points for {login}: {e}")
             return {}
+
+    def get_participant_project(self, login: str, project_id: int) -> dict[str, Any]:
+        """Fetch participant project status by ID. Endpoint: /v1/participants/{login}/projects/{projectId}"""
+        try:
+            data = self._request("GET", f"/v1/participants/{login}/projects/{project_id}")
+            return data if isinstance(data, dict) else {}
+        except S21ApiError as e:
+            logger.debug(f"Could not fetch project {project_id} for {login}: {e}")
+            return {}
+
