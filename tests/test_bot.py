@@ -65,6 +65,21 @@ def test_handle_help_authorized(bot_app):
     assert "Привет! Я бот поиска и валидации" in args[1]
 
 
+def test_handle_status_authorized(bot_app):
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/status"
+
+    handler = [h for h in bot_app.bot.message_handlers if "status" in h["filters"]["commands"]][0]
+    handler["function"](msg)
+
+    assert bot_app.bot.reply_to.called
+    args, kwargs = bot_app.bot.reply_to.call_args
+    assert "PeerChecker Status Report" in args[1]
+    assert "[Статус системы]" in args[1]
+    assert "[Статистика БД]" in args[1]
+
+
 def test_escape_markdown():
     from app.bot import escape_markdown
     assert escape_markdown("john_doe*test`[1]") == r"john\_doe\*test\`\[1]"

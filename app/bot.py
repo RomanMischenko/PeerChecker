@@ -163,32 +163,59 @@ class PeerCheckerBot:
                 stats = self.storage.get_stats()
                 last_check = self.storage.get_last_check_info()
 
-                status_str = "Запущен" if self.monitoring_active else "Остановлен"
-                last_check_str = last_check["timestamp"] if last_check else "Еще не проводилась"
+                monitoring_badge = "🟢 Активен" if self.monitoring_active else "🔴 Остановлен"
+                interval_str = f"каждые {self.config.CHECK_INTERVAL_MINUTES} мин"
 
-                text = (
-                    f"**Текущий статус бота PeerChecker**\n\n"
-                    f"• **Мониторинг:** {status_str}\n"
-                    f"• **Интервал:** {self.config.CHECK_INTERVAL_MINUTES} мин.\n"
-                    f"• **Последняя проверка:** `{escape_code_block(last_check_str)}`\n"
-                    f"• **Всего пиров в БД:** {stats.get('total', 0)}\n"
-                    f"  - Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
-                    f"  - Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n"
-                )
-                if stats.get("total_skipped_wave", 0) > 0:
-                    text += f"  - Пропущенные по волне (`SKIPPED_WAVE`): {stats.get('total_skipped_wave', 0)}\n"
-                text += "\n**По трайбам:**\n"
+                raw_ts = last_check["timestamp"] if last_check and "timestamp" in last_check else None
+                if raw_ts:
+                    try:
+                        dt = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
+                        last_check_str = dt.strftime("%d.%m.%Y %H:%M:%S")
+                    except Exception:
+                        last_check_str = str(raw_ts)
+                else:
+                    last_check_str = "Еще не проводилась"
+
+                wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
+
+                total_all = stats.get("total", 0)
+                verified = stats.get("total_verified", 0)
+                suspicious = stats.get("total_suspicious", 0)
+                skipped = stats.get("total_skipped_wave", 0)
+
+                lines = [
+                    "**PeerChecker Status Report**\n",
+                    "```text",
+                    "[Статус системы]",
+                    f"Мониторинг:     {monitoring_badge} ({interval_str})",
+                    f"Фильтр волны:   {wave_str}",
+                    f"Проверка:       {last_check_str}",
+                    "",
+                    "[Статистика БД]",
+                    f"Всего записей:  {total_all}",
+                    f"├ VERIFIED:     {verified}",
+                    f"├ SUSPICIOUS:   {suspicious}",
+                    f"└ SKIPPED_WAVE: {skipped}",
+                    "",
+                    "[По трайбам]",
+                ]
 
                 by_tribe = stats.get("by_tribe", {})
                 if not by_tribe:
-                    text += "_Данных по трайбам пока нет_\n"
+                    lines.append("• Данных по трайбам пока нет")
                 else:
                     for tid, tdata in by_tribe.items():
-                        skipped_str = f" / skipped: {tdata['skipped_wave']}" if tdata.get("skipped_wave", 0) > 0 else ""
-                        text += (
-                            f"• **{escape_markdown(tdata['tribe_name'])}** (ID {tid}): "
-                            f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']}{skipped_str})\n"
+                        tname = tdata.get("tribe_name", f"Tribe {tid}")
+                        ttotal = tdata.get("total", 0)
+                        tver = tdata.get("verified", 0)
+                        tsusp = tdata.get("suspicious", 0)
+                        tskip = tdata.get("skipped_wave", 0)
+                        lines.append(
+                            f"• {tname:<12} ({tid}): {ttotal:<4} [V:{tver} | S:{tsusp} | Skip:{tskip}]"
                         )
+
+                lines.append("```")
+                text = "\n".join(lines)
 
                 self.bot.reply_to(message, text, parse_mode="Markdown")
             except Exception as e:
