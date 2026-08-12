@@ -60,7 +60,48 @@ class Storage:
                 )
                 """
             )
+            # Table: bot_state
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             conn.commit()
+
+    def set_state(self, key: str, value: str) -> None:
+        """Set or update key-value pair in bot_state table."""
+        now = datetime.now().isoformat()
+        with self.connection_scope() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO bot_state (key, value, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                """,
+                (key, str(value), now),
+            )
+            conn.commit()
+
+    def get_state(self, key: str, default: str | None = None) -> str | None:
+        """Retrieve value by key from bot_state table."""
+        with self.connection_scope() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM bot_state WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else default
+
+    def is_monitoring_active(self) -> bool:
+        """Check if background monitoring state is enabled in persistent storage."""
+        val = self.get_state("monitoring_active", "0")
+        return val == "1"
+
+    def set_monitoring_active(self, active: bool) -> None:
+        """Save monitoring active status in persistent storage."""
+        self.set_state("monitoring_active", "1" if active else "0")
 
     def get_known_logins(self) -> set[str]:
         """Retrieve set of all logins currently present in DB."""

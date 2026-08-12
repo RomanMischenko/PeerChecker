@@ -105,3 +105,31 @@ def test_peer_card_null_first_seen(bot_app):
     # Ensure no empty backticks `` `` exist in formatted text
     assert "``" not in text
 
+
+def test_restore_monitoring_on_startup():
+    """Ensure that if monitoring was active in storage, initializing PeerCheckerBot restores monitoring automatically."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / "test_bot_restore.db"
+        cfg = Config()
+        cfg.TELEGRAM_BOT_TOKEN = "123456:dummy_token"
+        cfg.TELEGRAM_ADMIN_IDS = [12345]
+
+        # 1. First instance enables monitoring
+        st1 = Storage(db_path)
+        app1 = PeerCheckerBot(cfg, st1)
+        app1.start_monitoring_loop()
+        assert app1.monitoring_active is True
+        assert st1.is_monitoring_active() is True
+        app1.stop_monitoring_loop()
+
+        # Re-set active to True in storage to simulate crash while monitoring was running
+        st1.set_monitoring_active(True)
+
+        # 2. Second instance starts up and should auto-restore monitoring
+        st2 = Storage(db_path)
+        app2 = PeerCheckerBot(cfg, st2)
+        assert app2.monitoring_active is True
+        # Clean up monitoring thread
+        app2.stop_monitoring_loop()
+
+

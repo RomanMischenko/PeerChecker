@@ -76,6 +76,7 @@ class PeerCheckerBot:
         self.check_lock = threading.Lock()
 
         self._register_handlers()
+        self.restore_persistent_state()
 
     def _register_handlers(self) -> None:
         """Register Telegram bot command handlers."""
@@ -116,14 +117,7 @@ class PeerCheckerBot:
                 self.bot.reply_to(message, "Фоновый мониторинг уже запущен.")
                 return
 
-            if self.monitoring_thread and self.monitoring_thread.is_alive():
-                self.stop_event.set()
-                self.monitoring_thread.join(timeout=3.0)
-
-            self.monitoring_active = True
-            self.stop_event.clear()
-            self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
-            self.monitoring_thread.start()
+            self.start_monitoring_loop()
             logger.info(f"Monitoring started by admin user_id {message.from_user.id}")
             self.bot.reply_to(
                 message,
@@ -139,8 +133,7 @@ class PeerCheckerBot:
                 self.bot.reply_to(message, "Фоновый мониторинг не запущен.")
                 return
 
-            self.monitoring_active = False
-            self.stop_event.set()
+            self.stop_monitoring_loop()
             logger.info(f"Monitoring stopped by admin user_id {message.from_user.id}")
             self.bot.reply_to(message, "Фоновый мониторинг остановлен.", parse_mode="Markdown")
 
@@ -401,6 +394,36 @@ class PeerCheckerBot:
     def _send_peer_card(self, chat_id: int, peer: dict[str, Any]) -> None:
         text, markup = self._build_peer_card_content(peer)
         self.bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
+    def start_monitoring_loop(self) -> None:
+        """Start background monitoring thread and persist active state in storage."""
+        if self.monitoring_thread and self.monitoring_thread.is_alive():
+            self.stop_event.set()
+            self.monitoring_thread.join(timeout=3.0)
+
+        self.monitoring_active = True
+        self.storage.set_monitoring_active(True)
+        self.stop_event.clear()
+        self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.monitoring_thread.start()
+
+    def stop_monitoring_loop(self) -> None:
+        """Stop background monitoring thread and update persistent storage."""
+        self.monitoring_active = False
+        self.storage.set_monitoring_active(False)
+        self.stop_event.set()
+
+    def restore_persistent_state(self) -> None:
+        """Restore active states (e.g. background monitoring) from SQLite storage upon startup."""
+        if self.storage.is_monitoring_active():
+            logger.info("Restoring active background monitoring state from persistent SQLite storage...")
+            self.start_monitoring_loop()
+            try:
+                self._send_to_admins(
+                    "🔄 **Бот перезапущен.** Фоновый мониторинг автоматически возобновлен из сохраненного состояния базы данных."
+                )
+            except Exception as e:
+                logger.warning(f"Could not send startup recovery notification to admins: {e}")
 
     def _monitoring_loop(self) -> None:
         """Background thread target for periodic monitoring."""

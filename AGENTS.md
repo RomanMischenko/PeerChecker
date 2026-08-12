@@ -31,6 +31,7 @@ A peer is evaluated based on three strict criteria:
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.
 - Peer records are upserted via `ON CONFLICT(login) DO UPDATE`, preserving manual moderation flags (`is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END`).
+- Bot state persistence (`bot_state` table) saves flags such as `monitoring_active`. Upon restart, `PeerCheckerBot` automatically restores active states and resumes background monitoring seamless loop if enabled prior to shutdown or crash.
 
 ### 3. API Client Stability (`S21ApiClient`)
 - Reuses a persistent `requests.Session()` HTTP connection pool with context manager support (`__enter__`/`__exit__` and `close()`) to avoid TCP socket leaks.

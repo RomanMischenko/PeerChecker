@@ -156,3 +156,18 @@ def test_storage_connection_closed(storage):
     with pytest.raises(Exception):
         target_conn.execute("SELECT 1")
 
+
+def test_bot_state_persistence(storage):
+    """Verify storing and retrieving bot state and monitoring_active status."""
+    assert storage.is_monitoring_active() is False
+
+    storage.set_monitoring_active(True)
+    assert storage.is_monitoring_active() is True
+
+    storage.set_monitoring_active(False)
+    assert storage.is_monitoring_active() is False
+
+    storage.set_state("custom_key", "custom_val")
+    assert storage.get_state("custom_key") == "custom_val"
+
+
