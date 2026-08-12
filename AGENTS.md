@@ -48,6 +48,10 @@ A peer is evaluated based on three strict criteria:
 5. **Verbose Request Logging:**
    - Detailed step-by-step logging must be maintained during peer validation (wave match check, project GET statuses, feedback GET scores, and final verdict).
 
+6. **Automatic Documentation Maintenance:**
+   - After making any functional, architectural, or configuration changes, AI agents MUST automatically update both `README.md` and `AGENTS.md` so documentation remains 100% accurate and up-to-date without needing explicit user reminders.
+
+
 ---
 
 ## Local Verification & Testing Commands
