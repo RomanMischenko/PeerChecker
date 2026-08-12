@@ -207,7 +207,7 @@ def test_handle_export_skipped_wave_only(bot_app):
 
     assert bot_app.bot.reply_to.called
     calls = bot_app.bot.reply_to.call_args_list
-    assert any("нет проверенных" in str(call) for call in calls)
+    assert any("нет пиров для отчета" in str(call) for call in calls)
 
 
 def test_handle_status_callback_peer_not_found(bot_app):
@@ -248,6 +248,50 @@ def test_handle_peers_skipped_wave(bot_app):
     assert "Skipped Wave" in kwargs.get("caption", "")
 
 
+def test_handle_peers_expelled(bot_app):
+    bot_app.storage.save_peer({
+        "login": "expelled_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "EXPELLED",
+        "xp": 0,
+        "logtime": 0.0,
+    })
+
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/peers EXPELLED"
+
+    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"]["commands"]][0]
+    bot_app.bot.send_document = MagicMock()
+    handler["function"](msg)
+
+    assert bot_app.bot.send_document.called
+    args, kwargs = bot_app.bot.send_document.call_args
+    assert "Expelled" in kwargs.get("caption", "")
+
+
+def test_handle_export_with_expelled(bot_app):
+    bot_app.storage.save_peer({
+        "login": "expelled_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "EXPELLED",
+        "xp": 0,
+        "logtime": 0.0,
+    })
+
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/export"
+
+    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"]["commands"]][0]
+    bot_app.bot.send_document = MagicMock()
+    handler["function"](msg)
+
+    assert bot_app.bot.send_document.called
+
+
 def test_chunk_text_long_line_resets_chunk():
     from app.bot import chunk_text
     long_line = "A" * 150
@@ -256,6 +300,50 @@ def test_chunk_text_long_line_resets_chunk():
     chunks = chunk_text(text, max_length=100)
     assert len(chunks) >= 3
     assert all(len(c) <= 100 for c in chunks)
+
+
+def test_run_check_and_notify_expelled_and_restored(bot_app):
+    """Test full cycle: peer present -> peer disappears (EXPELLED notification) -> peer restored (VERIFIED re-validation)."""
+    with patch("app.bot.S21ApiClient") as mock_api_cls:
+        mock_api = MagicMock()
+        mock_api_cls.return_value.__enter__.return_value = mock_api
+
+        # Mock validate_peer to return VERIFIED
+        bot_app.validator.validate_peer = MagicMock(side_effect=lambda client, login, **kwargs: {
+            "login": login,
+            "status": "VERIFIED",
+            "is_skipped": False,
+            "total_xp": 1000,
+            "logtime": 10.0,
+            "suspicion_reason_text": "Прошел проверку",
+            "details": {},
+        })
+
+        bot_app._send_to_admins = MagicMock()
+
+        # Run 1: API returns peer_a and peer_b
+        mock_api.get_coalition_participants.side_effect = lambda tid, **kw: ["peer_a", "peer_b"] if tid == 604 else []
+        bot_app.run_check_and_notify()
+
+        assert bot_app.storage.get_peer("peer_a")["status"] == "VERIFIED"
+        assert bot_app.storage.get_peer("peer_b")["status"] == "VERIFIED"
+
+        # Run 2: API returns only peer_b (peer_a disappeared!)
+        mock_api.get_coalition_participants.side_effect = lambda tid, **kw: ["peer_b"] if tid == 604 else []
+        bot_app.run_check_and_notify()
+
+        assert bot_app.storage.get_peer("peer_a")["status"] == "EXPELLED"
+        assert bot_app.storage.get_peer("peer_b")["status"] == "VERIFIED"
+        # Admin should have received an expelled notification
+        assert any("Обнаружены отчислившиеся пиры" in str(call) for call in bot_app._send_to_admins.call_args_list)
+
+        # Run 3: API returns peer_a and peer_b again (peer_a restored!)
+        mock_api.get_coalition_participants.side_effect = lambda tid, **kw: ["peer_a", "peer_b"] if tid == 604 else []
+        bot_app.run_check_and_notify()
+
+        assert bot_app.storage.get_peer("peer_a")["status"] == "VERIFIED"
+        assert bot_app.storage.get_peer("peer_b")["status"] == "VERIFIED"
+
 
 
 

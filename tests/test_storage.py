@@ -180,4 +180,33 @@ def test_bot_state_persistence(storage):
     assert storage.get_state("custom_key") == "custom_val"
 
 
+def test_expelled_status_update_and_stats(storage):
+    """Verify updating peer status to EXPELLED, filtered query, and stats calculation."""
+    peer_data = {
+        "login": "exp_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "VERIFIED",
+        "xp": 1000,
+        "logtime": 10.0,
+    }
+    storage.save_peer(peer_data)
+
+    success = storage.update_peer_status("exp_peer", "EXPELLED", is_manual=False, reason_text="Отчислен / выбыл из трайба")
+    assert success is True
+
+    peer = storage.get_peer("exp_peer")
+    assert peer["status"] == "EXPELLED"
+
+    expelled_list = storage.get_filtered_peers(status="EXPELLED")
+    assert len(expelled_list) == 1
+    assert expelled_list[0]["login"] == "exp_peer"
+
+    stats = storage.get_stats()
+    assert stats["total"] == 1
+    assert stats["total_expelled"] == 1
+    assert stats["by_tribe"][604]["expelled"] == 1
+
+
+
 

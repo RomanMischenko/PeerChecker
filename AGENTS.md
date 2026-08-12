@@ -24,10 +24,12 @@ A peer is evaluated based on three strict criteria:
    - Checked via `GET /v1/participants/{login}/feedback`.
    - All 4 verifier feedback fields (`averageVerifierPunctuality`, `averageVerifierInterest`, `averageVerifierThoroughness`, `averageVerifierFriendliness`) must be strictly > 0.
 
-- **Status Assignment:**
+- **Status Assignment & Lifecycle:**
   - `VERIFIED`: Target wave matched, `ACCEPTED` projects >= 3, and all 4 feedback scores > 0.
   - `SUSPICIOUS`: Target wave matched, but either accepted projects < 3 or feedback scores are 0 (test/inactive accounts).
   - `SKIPPED_WAVE`: Wave `className` does not match `TARGET_CLASS_NAME`.
+  - `EXPELLED`: Peer was previously saved in SQLite DB (in any active status), but is missing from target coalition API responses during subsequent scans.
+  - **Restoration Transition:** If a peer with status `EXPELLED` appears in target coalition API responses again, they are re-validated via `validate_peer(...)` and automatically moved back to their active status (`VERIFIED`, `SUSPICIOUS`, or `SKIPPED_WAVE`). A peer belongs to exactly one status at any given time.
 
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, exponential backoff retries on `sqlite3.OperationalError` (database is locked), and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.

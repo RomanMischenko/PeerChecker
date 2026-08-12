@@ -182,6 +182,7 @@ class PeerCheckerBot:
                 verified = stats.get("total_verified", 0)
                 suspicious = stats.get("total_suspicious", 0)
                 skipped = stats.get("total_skipped_wave", 0)
+                expelled = stats.get("total_expelled", 0)
 
                 lines = [
                     "**PeerChecker Status Report**\n",
@@ -195,7 +196,8 @@ class PeerCheckerBot:
                     f"Всего записей:  {total_all}",
                     f"├ VERIFIED:     {verified}",
                     f"├ SUSPICIOUS:   {suspicious}",
-                    f"└ SKIPPED_WAVE: {skipped}",
+                    f"├ SKIPPED_WAVE: {skipped}",
+                    f"└ EXPELLED:     {expelled}",
                     "",
                     "[По трайбам]",
                 ]
@@ -210,8 +212,9 @@ class PeerCheckerBot:
                         tver = tdata.get("verified", 0)
                         tsusp = tdata.get("suspicious", 0)
                         tskip = tdata.get("skipped_wave", 0)
+                        texp = tdata.get("expelled", 0)
                         lines.append(
-                            f"• {tname:<12} ({tid}): {ttotal:<4} [V:{tver} | S:{tsusp} | Skip:{tskip}]"
+                            f"• {tname:<12} ({tid}): {ttotal:<4} [V:{tver} | S:{tsusp} | Skip:{tskip} | Exp:{texp}]"
                         )
 
                 lines.append("```")
@@ -250,7 +253,7 @@ class PeerCheckerBot:
                 if len(parts) < 3:
                     self.bot.reply_to(
                         message,
-                        "Формат команды: `/set_status <login> <verified|suspicious>`",
+                        "Формат команды: `/set_status <login> <verified|suspicious|expelled>`",
                         parse_mode="Markdown",
                     )
                     return
@@ -258,8 +261,8 @@ class PeerCheckerBot:
                 login = parts[1].strip()
                 new_status = parts[2].strip().upper()
 
-                if new_status not in ("VERIFIED", "SUSPICIOUS"):
-                    self.bot.reply_to(message, "Статус должен быть `VERIFIED` или `SUSPICIOUS`.", parse_mode="Markdown")
+                if new_status not in ("VERIFIED", "SUSPICIOUS", "EXPELLED"):
+                    self.bot.reply_to(message, "Статус должен быть `VERIFIED`, `SUSPICIOUS` или `EXPELLED`.", parse_mode="Markdown")
                     return
 
                 updated = self.storage.update_peer_status(login, new_status, is_manual=True)
@@ -286,7 +289,7 @@ class PeerCheckerBot:
 
                 for arg in parts:
                     arg_upper = arg.upper()
-                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_WAVE"):
+                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_WAVE", "EXPELLED"):
                         filter_status = arg_upper
                     elif arg_upper != "ALL":
                         filter_tribe = arg
@@ -325,10 +328,13 @@ class PeerCheckerBot:
                     v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
                     s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
                     w_count = sum(1 for p in peers if p["status"] == "SKIPPED_WAVE")
+                    e_count = sum(1 for p in peers if p["status"] == "EXPELLED")
 
                     status_counts = [f"Verified: **{v_count}**", f"Suspicious: **{s_count}**"]
                     if w_count > 0 or filter_status == "SKIPPED_WAVE":
                         status_counts.append(f"Skipped Wave: **{w_count}**")
+                    if e_count > 0 or filter_status == "EXPELLED":
+                        status_counts.append(f"Expelled: **{e_count}**")
 
                     caption = (
                         f"**Список пиров из БД{desc_str}**\n\n"
@@ -372,6 +378,7 @@ class PeerCheckerBot:
                         tname = tpeers[0]["tribe_name"]
                         verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
                         suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                        expelled_peers = [p for p in tpeers if p["status"] == "EXPELLED"]
 
                         if verified_peers:
                             v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
@@ -394,10 +401,22 @@ class PeerCheckerBot:
                                     )
                             files_to_send.append(s_path)
 
+                        if expelled_peers:
+                            e_path = os.path.join(temp_dir, f"{tname}_expelled.txt")
+                            with open(e_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Отчислившиеся пиры (EXPELLED) — Трайб {tname} (ID {tid}) ===\n")
+                                f.write(f"Дата: {now_str}\n\n")
+                                for p in expelled_peers:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"  Причина: {p.get('suspicion_reason', 'Отчислен')}\n\n"
+                                    )
+                            files_to_send.append(e_path)
+
                     if not files_to_send:
                         self.bot.reply_to(
                             message,
-                            "ℹ️ **Экспорт завершен:** В базе данных нет проверенных (`VERIFIED`) или подозрительных (`SUSPICIOUS`) пиров для отчета.",
+                            "ℹ️ **Экспорт завершен:** В базе данных нет пиров для отчета.",
                             parse_mode="Markdown",
                         )
                         return
@@ -462,7 +481,15 @@ class PeerCheckerBot:
         """Format peer card text and inline buttons."""
         login = peer["login"]
         status = peer["status"]
-        status_emoji = "✅ VERIFIED" if status == "VERIFIED" else "⚠️ SUSPICIOUS"
+        if status == "VERIFIED":
+            status_emoji = "✅ VERIFIED"
+        elif status == "SUSPICIOUS":
+            status_emoji = "⚠️ SUSPICIOUS"
+        elif status == "EXPELLED":
+            status_emoji = "❌ EXPELLED"
+        else:
+            status_emoji = f"ℹ️ {status}"
+
         manual_flag = " (изменено вручную)" if peer.get("is_manual") else ""
 
         first_seen_val = peer.get("first_seen") or "Неизвестно"
@@ -481,7 +508,9 @@ class PeerCheckerBot:
         markup = types.InlineKeyboardMarkup()
         btn_v = types.InlineKeyboardButton("✅ Установить VERIFIED", callback_data=f"set_status:{login}:VERIFIED")
         btn_s = types.InlineKeyboardButton("⚠️ Установить SUSPICIOUS", callback_data=f"set_status:{login}:SUSPICIOUS")
+        btn_e = types.InlineKeyboardButton("❌ Установить EXPELLED", callback_data=f"set_status:{login}:EXPELLED")
         markup.add(btn_v, btn_s)
+        markup.add(btn_e)
         return text, markup
 
     def _send_peer_card(self, chat_id: int, peer: dict[str, Any]) -> None:
@@ -551,7 +580,7 @@ class PeerCheckerBot:
         logger.info("Monitoring loop stopped.")
 
     def run_check_and_notify(self, is_background: bool = False) -> None:
-        """Core monitoring logic: queries S21 OpenAPI, skips existing DB peers, validates new peers, and notifies admins."""
+        """Core monitoring logic: queries S21 OpenAPI, detects expelled and restored peers, validates new peers, and notifies admins."""
         current_t = threading.current_thread()
         if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
             logger.info("Scan aborted by stop signal or stale thread.")
@@ -569,13 +598,7 @@ class PeerCheckerBot:
                 password=self.config.S21_PASSWORD,
             ) as api_client:
 
-                known_logins = self.storage.get_known_logins()
-                logger.info(f"Loaded {len(known_logins)} existing known logins from database.")
-
-                new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
-                all_new_peers: list[dict[str, Any]] = []
-                skipped_wave_count = 0
-                total_unprocessed_count = 0
+                api_active_map: dict[str, tuple[int, str]] = {}
 
                 for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
                     if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
@@ -591,78 +614,139 @@ class PeerCheckerBot:
                             return
 
                         logger.info(f"Fetched {len(participant_logins)} total logins for tribe {tribe_name} ({tribe_id}).")
-
-                        # Deduplication filter: only check logins not yet in SQLite DB!
-                        unprocessed_logins = [l for l in participant_logins if l not in known_logins]
-                        total_unprocessed_count += len(unprocessed_logins)
-                        logger.info(f"Found {len(unprocessed_logins)} new (unprocessed) logins for tribe {tribe_name}.")
-
-                        tribe_new_peers = []
-                        for idx, login in enumerate(unprocessed_logins):
-                            if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
-                                logger.info("Scan aborted by stop signal or stale thread during peer validation.")
-                                return
-
-                            try:
-                                val_res = self.validator.validate_peer(
-                                    api_client, login, current_index=idx + 1, total_count=len(unprocessed_logins)
-                                )
-
-                                val_res["tribe_id"] = tribe_id
-                                val_res["tribe_name"] = tribe_name
-                                val_res["xp"] = val_res["total_xp"]
-                                val_res["logtime"] = val_res["logtime"]
-
-                                # Save peer to DB immediately so validated progress is retained
-                                self.storage.save_peer(val_res)
-                                known_logins.add(login)
-
-                                # Only add to notifications if not skipped by wave filter
-                                if val_res.get("is_skipped"):
-                                    skipped_wave_count += 1
-                                else:
-                                    tribe_new_peers.append(val_res)
-                                    all_new_peers.append(val_res)
-
-                            except Exception as e:
-                                logger.error(f"Error validating peer {login}: {e}", exc_info=True)
-
-                        if tribe_new_peers:
-                            new_peers_by_tribe[tribe_id] = tribe_new_peers
+                        for login in participant_logins:
+                            api_active_map[login] = (tribe_id, tribe_name)
 
                     except Exception as e:
                         logger.error(f"Error checking coalition {tribe_id} ({tribe_name}): {e}")
 
+                # Load all existing peer records from database
+                existing_db_peers = self.storage.get_all_peers()
+                existing_peers_by_login = {p["login"]: p for p in existing_db_peers}
+                logger.info(f"Loaded {len(existing_db_peers)} existing peer records from database.")
+
+                # 1. Detect newly expelled peers (was active in DB, but missing from current API responses)
+                newly_expelled_by_tribe: dict[int, list[dict[str, Any]]] = {}
+                total_expelled_count = 0
+
+                for p in existing_db_peers:
+                    if p["status"] != "EXPELLED" and p["login"] not in api_active_map:
+                        login = p["login"]
+                        tid = p["tribe_id"]
+                        logger.warning(f"Peer '{login}' (Tribe {p['tribe_name']}) is missing from API! Changing status to EXPELLED.")
+                        self.storage.update_peer_status(
+                            login,
+                            "EXPELLED",
+                            is_manual=False,
+                            reason_text="Отчислен / выбыл из трайба",
+                        )
+                        expelled_peer_record = self.storage.get_peer(login) or p
+                        expelled_peer_record["status"] = "EXPELLED"
+                        newly_expelled_by_tribe.setdefault(tid, []).append(expelled_peer_record)
+                        total_expelled_count += 1
+
+                # 2. Identify logins that require validation (either brand new OR restored from EXPELLED)
+                logins_to_validate: list[tuple[str, int, str]] = []
+                for login, (tid, tname) in api_active_map.items():
+                    prev_rec = existing_peers_by_login.get(login)
+                    if not prev_rec or prev_rec.get("status") == "EXPELLED":
+                        logins_to_validate.append((login, tid, tname))
+
+                logger.info(f"Found {len(logins_to_validate)} logins requiring validation (new or restored).")
+
+                new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
+                all_new_peers: list[dict[str, Any]] = []
+                skipped_wave_count = 0
+
+                for idx, (login, tid, tname) in enumerate(logins_to_validate):
+                    if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
+                        logger.info("Scan aborted by stop signal or stale thread during peer validation.")
+                        return
+
+                    try:
+                        val_res = self.validator.validate_peer(
+                            api_client, login, current_index=idx + 1, total_count=len(logins_to_validate)
+                        )
+                        val_res["tribe_id"] = tid
+                        val_res["tribe_name"] = tname
+                        val_res["xp"] = val_res["total_xp"]
+                        val_res["logtime"] = val_res["logtime"]
+
+                        # Save peer to DB immediately so validated progress is retained (restores peer status)
+                        self.storage.save_peer(val_res)
+
+                        if val_res.get("is_skipped"):
+                            skipped_wave_count += 1
+                        else:
+                            new_peers_by_tribe.setdefault(tid, []).append(val_res)
+                            all_new_peers.append(val_res)
+
+                    except Exception as e:
+                        logger.error(f"Error validating peer {login}: {e}", exc_info=True)
+
                 now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
                 target_wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
 
-                # Notification Logic
+                # 3. Send notification for newly EXPELLED peers if any
+                if total_expelled_count > 0:
+                    expelled_summary = (
+                        f"🚨 **Обнаружены отчислившиеся пиры!** ({total_expelled_count} чел.)\n"
+                        f"• **Время проверки:** `{escape_code_block(now_str)}`\n"
+                    )
+                    expelled_files = []
+                    temp_dir_expelled = tempfile.mkdtemp()
+                    try:
+                        for tid, tname in self.config.TARGET_COALITIONS.items():
+                            t_exp = newly_expelled_by_tribe.get(tid, [])
+                            if not t_exp:
+                                continue
+                            expelled_summary += f"• **{escape_markdown(tname)}:** {len(t_exp)} чел.\n"
+
+                            e_path = os.path.join(temp_dir_expelled, f"{tname}_expelled.txt")
+                            with open(e_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Список отчислившихся пиров (EXPELLED) — Трайб {tname} ===\n")
+                                f.write(f"Дата проверки: {now_str}\n\n")
+                                for p in t_exp:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)} | Логтайм: {p.get('logtime', 0.0):.2f} ч/нед\n"
+                                        f"  Причина: {p.get('suspicion_reason', 'Отчислен / выбыл из трайба')}\n\n"
+                                    )
+                            expelled_files.append(e_path)
+
+                        self._send_to_admins(expelled_summary, files=expelled_files)
+                    finally:
+                        shutil.rmtree(temp_dir_expelled, ignore_errors=True)
+
+                # 4. Send notification for NEW / RESTORED peers if any
                 if not all_new_peers:
-                    if total_unprocessed_count == 0:
+                    if len(logins_to_validate) == 0:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                            f"• **Результат:** Новых логинов на платформе не обнаружено.\n"
+                            f"• **Результат:** Новых/восстановленных логинов на платформе не обнаружено.\n"
+                            f"• **Отчислено за эту проверку:** {total_expelled_count} чел.\n"
                             f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
-                        log_msg = "Новых логинов на платформе не обнаружено"
+                        log_msg = f"Новых логинов не обнаружено (отчислено: {total_expelled_count})"
                     else:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
                             f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
                             f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
-                            f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
+                            f"• **Проверено логинов:** {len(logins_to_validate)} (все из других волн, пропущены)\n"
+                            f"• **Отчислено за эту проверку:** {total_expelled_count} чел.\n"
                             f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
-                        log_msg = f"Проверено {total_unprocessed_count} новых пиров, пиров целевой волны ({target_wave_str}) не обнаружено"
+                        log_msg = f"Проверено {len(logins_to_validate)} пиров, целевой волны ({target_wave_str}) не обнаружено (отчислено: {total_expelled_count})"
 
-                    self._send_to_admins(report_text)
+                    if total_expelled_count == 0 or len(logins_to_validate) > 0:
+                        self._send_to_admins(report_text)
                     self.storage.log_check_run(0, log_msg)
                     return
 
                 # Summary for newly found target wave peers
                 total_new = len(all_new_peers)
                 summary_text = (
-                    f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
+                    f"🚨 **Обнаружены новые/восстановленные пиры целевой волны!** ({total_new} чел.)\n"
                     f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
                     f"• **Время проверки:** `{escape_code_block(now_str)}`\n"
                 )
@@ -718,7 +802,7 @@ class PeerCheckerBot:
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
 
-                self.storage.log_check_run(total_new, f"Найдено новых: {total_new}")
+                self.storage.log_check_run(total_new, f"Найдено новых: {total_new}, отчислено: {total_expelled_count}")
 
         finally:
             self.storage.set_check_in_progress(False)

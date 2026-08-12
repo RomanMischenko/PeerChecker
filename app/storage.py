@@ -184,17 +184,20 @@ class Storage:
             conn.commit()
             logger.info(f"Saved/Updated {len(peers)} peers in database.")
 
-    def update_peer_status(self, login: str, new_status: str, is_manual: bool = True) -> bool:
+    def update_peer_status(
+        self, login: str, new_status: str, is_manual: bool = True, reason_text: str | None = None
+    ) -> bool:
         """
-        Manually update status of a peer ('VERIFIED' or 'SUSPICIOUS').
+        Update status of a peer ('VERIFIED', 'SUSPICIOUS', or 'EXPELLED').
         Sets is_manual=1 if updated by admin.
         """
         new_status = new_status.upper()
-        if new_status not in ("VERIFIED", "SUSPICIOUS"):
-            raise ValueError("Status must be 'VERIFIED' or 'SUSPICIOUS'")
+        if new_status not in ("VERIFIED", "SUSPICIOUS", "EXPELLED"):
+            raise ValueError("Status must be 'VERIFIED', 'SUSPICIOUS', or 'EXPELLED'")
 
         now = datetime.now().isoformat()
-        reason_text = "Изменено вручную администратором" if is_manual else ""
+        if reason_text is None:
+            reason_text = "Изменено вручную администратором" if is_manual else ""
         with self.connection_scope() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -246,7 +249,7 @@ class Storage:
     def get_filtered_peers(
         self, tribe_id: int | str | None = None, status: str | None = None
     ) -> list[dict[str, Any]]:
-        """Retrieve peers filtered by optional tribe_id/tribe_name and/or status ('VERIFIED' or 'SUSPICIOUS')."""
+        """Retrieve peers filtered by optional tribe_id/tribe_name and/or status ('VERIFIED', 'SUSPICIOUS', or 'EXPELLED')."""
         query = "SELECT * FROM peers WHERE 1=1"
         params: list[Any] = []
 
@@ -289,6 +292,7 @@ class Storage:
                 "total_verified": 0,
                 "total_suspicious": 0,
                 "total_skipped_wave": 0,
+                "total_expelled": 0,
             }
             for row in rows:
                 tid = row["tribe_id"]
@@ -302,6 +306,7 @@ class Storage:
                         "verified": 0,
                         "suspicious": 0,
                         "skipped_wave": 0,
+                        "expelled": 0,
                         "total": 0,
                     }
 
@@ -311,6 +316,9 @@ class Storage:
                 elif status == "SKIPPED_WAVE":
                     stats["by_tribe"][tid]["skipped_wave"] += count
                     stats["total_skipped_wave"] += count
+                elif status == "EXPELLED":
+                    stats["by_tribe"][tid]["expelled"] += count
+                    stats["total_expelled"] += count
                 else:
                     stats["by_tribe"][tid]["suspicious"] += count
                     stats["total_suspicious"] += count
