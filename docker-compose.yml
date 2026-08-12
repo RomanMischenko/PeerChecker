@@ -1,0 +1,9 @@
+services:
+  peerchecker:
+    build: .
+    container_name: peerchecker_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
