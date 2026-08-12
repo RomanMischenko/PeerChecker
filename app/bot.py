@@ -267,7 +267,6 @@ class PeerCheckerBot:
                     val_res["tribe_id"] = tribe_id
                     val_res["tribe_name"] = tribe_name
                     val_res["xp"] = val_res["total_xp"]
-                    val_res["logtime"] = val_res["logtime"]
                     val_res["is_manual"] = 0
 
                     self.storage.save_peer(val_res, force=True)
@@ -327,7 +326,7 @@ class PeerCheckerBot:
                             manual_str = " [ручной статус]" if p.get("is_manual") else ""
                             f.write(
                                 f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
-                                f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                f"Статус: {p['status']}{manual_str} | XP: {p['xp']}\n"
                             )
                             if p.get("suspicion_reason"):
                                 f.write(f"  Причина: {p['suspicion_reason']}\n")
@@ -393,7 +392,7 @@ class PeerCheckerBot:
                                 f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in verified_peers:
-                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']}\n")
                             files_to_send.append(v_path)
 
                         if suspicious_peers:
@@ -403,7 +402,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in suspicious_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)
@@ -415,7 +414,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in expelled_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Отчислен')}\n\n"
                                     )
                             files_to_send.append(e_path)
@@ -507,7 +506,6 @@ class PeerCheckerBot:
             f"• **Трайб:** {escape_markdown(peer['tribe_name'])} (ID {peer['tribe_id']})\n"
             f"• **Статус:** {status_emoji}{manual_flag}\n"
             f"• **Суммарный XP:** {peer.get('xp', 0)}\n"
-            f"• **Логтайм:** {peer.get('logtime', 0.0):.2f} ч/нед\n"
             f"• **Причина / Примечание:** `{escape_code_block(suspicion_reason_val)}`\n"
             f"• **Первое обнаружение:** `{escape_code_block(first_seen_val)}`\n"
         )
@@ -677,7 +675,6 @@ class PeerCheckerBot:
                         val_res["tribe_id"] = tid
                         val_res["tribe_name"] = tname
                         val_res["xp"] = val_res["total_xp"]
-                        val_res["logtime"] = val_res["logtime"]
 
                         # Save peer to DB immediately so validated progress is retained (restores peer status)
                         self.storage.save_peer(val_res)
@@ -715,7 +712,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in t_exp:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)} | Логтайм: {p.get('logtime', 0.0):.2f} ч/нед\n"
+                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Отчислен / выбыл из трайба')}\n\n"
                                     )
                             expelled_files.append(e_path)
@@ -785,7 +782,7 @@ class PeerCheckerBot:
                                 f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in verified_peers:
-                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']}\n")
                             files_to_send.append(v_path)
 
                         # Suspicious file
@@ -796,7 +793,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in suspicious_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)

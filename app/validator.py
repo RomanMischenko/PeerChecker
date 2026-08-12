@@ -78,7 +78,6 @@ class PeerValidator:
                     "is_skipped": True,
                     "class_name": display_class,
                     "total_xp": 0,
-                    "logtime": 0.0,
                     "accepted_projects_count": 0,
                     "suspicion_reasons": [reason],
                     "suspicion_reason_text": f"Пропущена волна: {display_class} (нет списка проектов)",
@@ -99,7 +98,6 @@ class PeerValidator:
                     "is_skipped": True,
                     "class_name": display_class,
                     "total_xp": 0,
-                    "logtime": 0.0,
                     "accepted_projects_count": 0,
                     "suspicion_reasons": [reason],
                     "suspicion_reason_text": f"Пропущена волна: {display_class}",
@@ -108,8 +106,6 @@ class PeerValidator:
             target_project_ids = self.target_project_ids
         else:
             target_project_ids = self.target_project_ids
-
-        logtime = api_client.get_participant_logtime(login)
 
         # Total XP directly from participant info profile (expValue)
         total_xp = _safe_int(info.get("expValue")) if isinstance(info, dict) else 0
@@ -129,7 +125,6 @@ class PeerValidator:
                     "is_skipped": True,
                     "class_name": display_class,
                     "total_xp": total_xp,
-                    "logtime": logtime,
                     "accepted_projects_count": 0,
                     "suspicion_reasons": [reason],
                     "suspicion_reason_text": reason,
@@ -187,7 +182,6 @@ class PeerValidator:
             "login": login,
             "status": status,
             "total_xp": total_xp,
-            "logtime": logtime,
             "accepted_projects_count": accepted_count,
             "feedback": feedback,
             "suspicion_reasons": reasons,

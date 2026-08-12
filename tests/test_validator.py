@@ -5,7 +5,6 @@ from app.validator import PeerValidator
 def test_validate_peer_verified():
     mock_api = MagicMock()
     mock_api.get_participant_info.return_value = {"login": "active_peer", "expValue": 1250}
-    mock_api.get_participant_logtime.return_value = 14.5
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": 4.5,
         "averageVerifierInterest": 4.8,
@@ -33,7 +32,6 @@ def test_validate_peer_verified():
 def test_validate_peer_suspicious():
     mock_api = MagicMock()
     mock_api.get_participant_info.return_value = {"login": "test_acc"}
-    mock_api.get_participant_logtime.return_value = 0.0
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": 0,
         "averageVerifierInterest": 0,
@@ -74,7 +72,6 @@ def test_validate_peer_skipped_wave():
 def test_validate_peer_null_feedback():
     mock_api = MagicMock()
     mock_api.get_participant_info.return_value = {"login": "null_fb_peer"}
-    mock_api.get_participant_logtime.return_value = 5.0
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": None,
         "averageVerifierInterest": None,

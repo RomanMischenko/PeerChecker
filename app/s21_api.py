@@ -189,21 +189,6 @@ class S21ApiClient:
         data = self._request("GET", f"/v1/participants/{login}")
         return data if isinstance(data, dict) else {}
 
-    def get_participant_logtime(self, login: str) -> float:
-        """Fetch average weekly logtime hours. Endpoint: /v1/participants/{login}/logtime"""
-        try:
-            data = self._request("GET", f"/v1/participants/{login}/logtime")
-            if isinstance(data, (int, float)):
-                return float(data)
-            if isinstance(data, dict):
-                val = data.get("logtimeWeeklyAvgHours") or data.get("logtime") or data.get("value")
-                if val is not None:
-                    return float(val)
-            return 0.0
-        except S21ApiError as e:
-            logger.warning(f"Could not fetch logtime for {login}: {e}")
-            return 0.0
-
     def get_participant_project(self, login: str, project_id: int) -> dict[str, Any]:
         """Fetch participant project status by ID. Endpoint: /v1/participants/{login}/projects/{projectId}"""
         try:
