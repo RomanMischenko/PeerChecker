@@ -175,6 +175,34 @@ class Storage:
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
 
+    def get_filtered_peers(
+        self, tribe_id: int | str | None = None, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Retrieve peers filtered by optional tribe_id/tribe_name and/or status ('VERIFIED' or 'SUSPICIOUS')."""
+        query = "SELECT * FROM peers WHERE 1=1"
+        params: list[Any] = []
+
+        if tribe_id is not None:
+            if isinstance(tribe_id, int) or (isinstance(tribe_id, str) and tribe_id.isdigit()):
+                query += " AND tribe_id = ?"
+                params.append(int(tribe_id))
+            elif isinstance(tribe_id, str) and tribe_id:
+                query += " AND LOWER(tribe_name) LIKE ?"
+                params.append(f"%{tribe_id.lower()}%")
+
+        if status:
+            query += " AND UPPER(status) = ?"
+            params.append(status.upper())
+
+        query += " ORDER BY tribe_id ASC, status ASC, login ASC"
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
     def get_stats(self) -> dict[str, Any]:
         """Calculate aggregated peer stats grouped by tribe and status."""
         with self._get_connection() as conn:

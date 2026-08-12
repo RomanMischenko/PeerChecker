@@ -125,3 +125,24 @@ def test_stats_and_check_logs(storage):
     assert last_log is not None
     assert last_log["new_peers_count"] == 2
     assert last_log["status_summary"] == "Test check log"
+
+
+def test_get_filtered_peers(storage):
+    peers = [
+        {"login": "p1", "tribe_id": 604, "tribe_name": "Northern", "status": "VERIFIED", "xp": 10, "logtime": 1.0},
+        {"login": "p2", "tribe_id": 604, "tribe_name": "Northern", "status": "SUSPICIOUS", "xp": 0, "logtime": 0.0},
+        {"login": "p3", "tribe_id": 605, "tribe_name": "Powder", "status": "VERIFIED", "xp": 50, "logtime": 3.0},
+    ]
+    storage.save_peers_batch(peers)
+
+    verified = storage.get_filtered_peers(status="VERIFIED")
+    assert len(verified) == 2
+    assert {p["login"] for p in verified} == {"p1", "p3"}
+
+    tribe_604 = storage.get_filtered_peers(tribe_id=604)
+    assert len(tribe_604) == 2
+
+    filtered_both = storage.get_filtered_peers(tribe_id=604, status="SUSPICIOUS")
+    assert len(filtered_both) == 1
+    assert filtered_both[0]["login"] == "p2"
+

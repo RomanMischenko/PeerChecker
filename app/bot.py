@@ -52,17 +52,20 @@ class PeerCheckerBot:
         @admin_only
         def handle_start(message: types.Message) -> None:
             text = (
-                "👋 **Привет! Я бот поиска и валидации новых пиров Школы 21.**\n\n"
-                "📌 **Доступные команды:**\n"
+                "**Привет! Я бот поиска и валидации новых пиров Школы 21.**\n\n"
+                "**Доступные команды:**\n"
                 "/start — Справка и приветствие\n"
                 "/start_monitoring — Запуск автоматического фонового мониторинга\n"
                 "/stop_monitoring — Остановка фонового мониторинга\n"
                 "/check_now — Запуск проверки вне очереди\n"
                 "/status — Статус работы бота и статистика базы данных\n"
+                "/peers [verified|suspicious|all|tribe] — Получение текущего списка пиров из БД\n"
+                "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
                 "/peer <login> — Карточка пира с возможностью смены статуса\n"
                 "/set_status <login> <verified|suspicious> — Ручная смена статуса пира\n"
             )
             self.bot.reply_to(message, text, parse_mode="Markdown")
+
 
         @self.bot.message_handler(commands=["start_monitoring"])
         @admin_only
@@ -176,7 +179,118 @@ class PeerCheckerBot:
             else:
                 self.bot.reply_to(message, f"❌ Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
 
+        @self.bot.message_handler(commands=["peers", "list"])
+        @admin_only
+        def handle_peers(message: types.Message) -> None:
+            parts = message.text.strip().split()[1:]
+
+            filter_status = None
+            filter_tribe = None
+
+            for arg in parts:
+                arg_upper = arg.upper()
+                if arg_upper in ("VERIFIED", "SUSPICIOUS"):
+                    filter_status = arg_upper
+                elif arg_upper != "ALL":
+                    filter_tribe = arg
+
+            peers = self.storage.get_filtered_peers(tribe_id=filter_tribe, status=filter_status)
+            if not peers:
+                self.bot.reply_to(message, "❌ Пиров по данному запросу не найдено.", parse_mode="Markdown")
+                return
+
+            filter_desc = []
+            if filter_tribe:
+                filter_desc.append(f"трайб: `{filter_tribe}`")
+            if filter_status:
+                filter_desc.append(f"статус: `{filter_status}`")
+            desc_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
+
+            if len(peers) <= 20:
+                text = f"📋 **Список пиров из БД{desc_str}** (всего: {len(peers)}):\n\n"
+                for p in peers:
+                    status_icon = "✅" if p["status"] == "VERIFIED" else "⚠️"
+                    text += f"• {status_icon} `{p['login']}` | {p['tribe_name']} | XP: {p['xp']} | Logtime: {p['logtime']:.2f}h\n"
+                self.bot.reply_to(message, text, parse_mode="Markdown")
+            else:
+                now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"peers_export_{now_str}.txt"
+                temp_path = os.path.join(tempfile.gettempdir(), filename)
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
+                    if desc_str:
+                        f.write(f"Фильтр: {desc_str}\n")
+                    f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
+                    for p in peers:
+                        f.write(
+                            f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
+                            f"Статус: {p['status']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                        )
+                        if p.get("suspicion_reason"):
+                            f.write(f"  Причина: {p['suspicion_reason']}\n")
+
+                caption = f"📋 **Экспорт пиров из БД{desc_str}** (всего {len(peers)} чел.)"
+                with open(temp_path, "rb") as doc:
+                    self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
+        @self.bot.message_handler(commands=["export", "export_txt"])
+        @admin_only
+        def handle_export(message: types.Message) -> None:
+            peers = self.storage.get_all_peers()
+            if not peers:
+                self.bot.reply_to(message, "❌ В базе данных пока нет сохраненных пиров.", parse_mode="Markdown")
+                return
+
+            self.bot.reply_to(message, "📁 **Формирую файлы экспорта списка пиров по трайбам...**", parse_mode="Markdown")
+
+            now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+            temp_dir = tempfile.mkdtemp()
+            files_to_send = []
+
+            by_tribe: dict[int, list[dict[str, Any]]] = {}
+            for p in peers:
+                by_tribe.setdefault(p["tribe_id"], []).append(p)
+
+            for tid, tpeers in by_tribe.items():
+                tname = tpeers[0]["tribe_name"]
+                verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
+                suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+
+                if verified_peers:
+                    v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
+                    with open(v_path, "w", encoding="utf-8") as f:
+                        f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
+                        f.write(f"Дата: {now_str}\n\n")
+                        for p in verified_peers:
+                            f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                    files_to_send.append(v_path)
+
+                if suspicious_peers:
+                    s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
+                    with open(s_path, "w", encoding="utf-8") as f:
+                        f.write(f"=== Подозрительные пиры (SUSPICIOUS) — Трайб {tname} (ID {tid}) ===\n")
+                        f.write(f"Дата: {now_str}\n\n")
+                        for p in suspicious_peers:
+                            f.write(
+                                f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
+                            )
+                    files_to_send.append(s_path)
+
+            for fp in files_to_send:
+                with open(fp, "rb") as doc:
+                    self.bot.send_document(message.chat.id, doc)
+                try:
+                    os.remove(fp)
+                except Exception:
+                    pass
+
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("set_status:"))
+
         def handle_status_callback(call: types.CallbackQuery) -> None:
             user_id = call.from_user.id
             if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
