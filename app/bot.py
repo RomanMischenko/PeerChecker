@@ -354,7 +354,7 @@ class PeerCheckerBot:
         logger.info("Monitoring loop started.")
         while not self.stop_event.is_set():
             try:
-                self.run_check_and_notify()
+                self.run_check_and_notify(is_background=True)
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}", exc_info=True)
 
@@ -367,7 +367,7 @@ class PeerCheckerBot:
 
         logger.info("Monitoring loop stopped.")
 
-    def run_check_and_notify(self) -> None:
+    def run_check_and_notify(self, is_background: bool = False) -> None:
         """Core monitoring logic: queries S21 OpenAPI, skips existing DB peers, validates new peers, and notifies admins."""
         if not self.check_lock.acquire(blocking=False):
             logger.warning("Check already in progress. Skipping duplicate run.")
@@ -387,8 +387,18 @@ class PeerCheckerBot:
             all_new_peers: list[dict[str, Any]] = []
 
             for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
+                if is_background and self.stop_event.is_set():
+                    logger.info("Scan aborted by stop signal.")
+                    return
+
                 try:
-                    participant_logins = api_client.get_coalition_participants(tribe_id)
+                    participant_logins = api_client.get_coalition_participants(
+                        tribe_id, stop_event=self.stop_event if is_background else None
+                    )
+                    if is_background and self.stop_event.is_set():
+                        logger.info("Scan aborted by stop signal.")
+                        return
+
                     logger.info(f"Fetched {len(participant_logins)} total logins for tribe {tribe_name} ({tribe_id}).")
 
                     # Deduplication filter: only check logins not yet in SQLite DB!
@@ -397,6 +407,10 @@ class PeerCheckerBot:
 
                     tribe_new_peers = []
                     for login in unprocessed_logins:
+                        if is_background and self.stop_event.is_set():
+                            logger.info("Scan aborted by stop signal during peer validation.")
+                            return
+
                         try:
                             val_res = self.validator.validate_peer(api_client, login)
                             val_res["tribe_id"] = tribe_id
@@ -415,6 +429,7 @@ class PeerCheckerBot:
 
                 except Exception as e:
                     logger.error(f"Error checking coalition {tribe_id} ({tribe_name}): {e}")
+
 
             # Save new peers to database
             if all_new_peers:

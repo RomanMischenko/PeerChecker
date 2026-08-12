@@ -114,7 +114,7 @@ class S21ApiClient:
 
         raise S21ApiError(f"Failed request to {endpoint} after {self.max_retries} attempts.")
 
-    def get_coalition_participants(self, coalition_id: int) -> list[str]:
+    def get_coalition_participants(self, coalition_id: int, stop_event: Any = None) -> list[str]:
         """
         Fetch all participant logins in a coalition using pagination (limit/offset).
         Endpoint: /v1/coalitions/{coalitionId}/participants
@@ -124,10 +124,15 @@ class S21ApiClient:
         offset = 0
 
         while True:
+            if stop_event and stop_event.is_set():
+                logger.info("Coalition participants fetch cancelled by stop event.")
+                break
+
             endpoint = f"/v1/coalitions/{coalition_id}/participants"
             params = {"limit": limit, "offset": offset}
             logger.info(f"Fetching coalition {coalition_id} participants (limit={limit}, offset={offset})...")
             data = self._request("GET", endpoint, params=params)
+
 
             # Response can be list of logins/dicts or dict with 'logins'/'participants' key
             batch = []
