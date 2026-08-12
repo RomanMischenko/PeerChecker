@@ -1,6 +1,7 @@
 services:
   peerchecker:
     build: .
+    image: s21_peerchecker
     container_name: peerchecker_bot
     restart: always
     env_file:
