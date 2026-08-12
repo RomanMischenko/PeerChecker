@@ -384,6 +384,7 @@ class PeerCheckerBot:
                         tname = tpeers[0]["tribe_name"]
                         verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
                         suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                        skipped_peers = [p for p in tpeers if p["status"] in ("SKIPPED_PEERS", "SKIPPED_WAVE")]
                         expelled_peers = [p for p in tpeers if p["status"] == "EXPELLED"]
 
                         if verified_peers:
@@ -406,6 +407,18 @@ class PeerCheckerBot:
                                         f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)
+
+                        if skipped_peers:
+                            k_path = os.path.join(temp_dir, f"{tname}_skipped.txt")
+                            with open(k_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Пропущенные пиры (SKIPPED_PEERS) — Трайб {tname} (ID {tid}) ===\n")
+                                f.write(f"Дата: {now_str}\n\n")
+                                for p in skipped_peers:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
+                                        f"  Причина: {p.get('suspicion_reason', 'Волна не настроена или ошибка API')}\n\n"
+                                    )
+                            files_to_send.append(k_path)
 
                         if expelled_peers:
                             e_path = os.path.join(temp_dir, f"{tname}_expelled.txt")
@@ -660,6 +673,7 @@ class PeerCheckerBot:
                 logger.info(f"Found {len(logins_to_validate)} logins requiring validation (new or restored).")
 
                 new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
+                skipped_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
                 all_new_peers: list[dict[str, Any]] = []
                 skipped_peers_count = 0
 
@@ -681,6 +695,7 @@ class PeerCheckerBot:
 
                         if val_res.get("is_skipped"):
                             skipped_peers_count += 1
+                            skipped_peers_by_tribe.setdefault(tid, []).append(val_res)
                         else:
                             new_peers_by_tribe.setdefault(tid, []).append(val_res)
                             all_new_peers.append(val_res)
@@ -731,6 +746,8 @@ class PeerCheckerBot:
                             f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
                         log_msg = f"Новых логинов не обнаружено (отчислено: {total_expelled_count})"
+                        if total_expelled_count == 0:
+                            self._send_to_admins(report_text)
                     else:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
@@ -741,8 +758,30 @@ class PeerCheckerBot:
                         )
                         log_msg = f"Проверено {len(logins_to_validate)} пиров (пропущено: {skipped_peers_count}, отчислено: {total_expelled_count})"
 
-                    if total_expelled_count == 0 or len(logins_to_validate) > 0:
-                        self._send_to_admins(report_text)
+                        skipped_files = []
+                        if skipped_peers_count > 0:
+                            temp_dir_skipped = tempfile.mkdtemp()
+                            try:
+                                for tid, tname in self.config.TARGET_COALITIONS.items():
+                                    t_skp = skipped_peers_by_tribe.get(tid, [])
+                                    if not t_skp:
+                                        continue
+                                    k_path = os.path.join(temp_dir_skipped, f"{tname}_skipped.txt")
+                                    with open(k_path, "w", encoding="utf-8") as f:
+                                        f.write(f"=== Список пропущенных пиров (SKIPPED_PEERS) — Трайб {tname} ===\n")
+                                        f.write(f"Дата проверки: {now_str}\n\n")
+                                        for p in t_skp:
+                                            f.write(
+                                                f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
+                                                f"  Причина: {p.get('suspicion_reason_text') or p.get('suspicion_reason') or 'Неизвестно'}\n\n"
+                                            )
+                                    skipped_files.append(k_path)
+                                self._send_to_admins(report_text, files=skipped_files)
+                            finally:
+                                shutil.rmtree(temp_dir_skipped, ignore_errors=True)
+                        else:
+                            self._send_to_admins(report_text)
+
                     self.storage.log_check_run(0, log_msg)
                     return
 
@@ -769,7 +808,8 @@ class PeerCheckerBot:
                 try:
                     for tid, tname in self.config.TARGET_COALITIONS.items():
                         tpeers = new_peers_by_tribe.get(tid, [])
-                        if not tpeers:
+                        tskipped = skipped_peers_by_tribe.get(tid, [])
+                        if not tpeers and not tskipped:
                             continue
 
                         verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
@@ -797,6 +837,19 @@ class PeerCheckerBot:
                                         f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)
+
+                        # Skipped file
+                        if tskipped:
+                            k_path = os.path.join(temp_dir, f"{tname}_skipped.txt")
+                            with open(k_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Список пропущенных пиров (SKIPPED_PEERS) — Трайб {tname} ===\n")
+                                f.write(f"Дата проверки: {now_str}\n\n")
+                                for p in tskipped:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
+                                        f"  Причина: {p.get('suspicion_reason_text') or p.get('suspicion_reason') or 'Неизвестно'}\n\n"
+                                    )
+                            files_to_send.append(k_path)
 
                     # Send summary + files to all admins
                     self._send_to_admins(summary_text, files=files_to_send)

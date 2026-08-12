@@ -203,11 +203,10 @@ def test_handle_export_skipped_wave_only(bot_app):
     msg.text = "/export"
 
     handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"]["commands"]][0]
+    bot_app.bot.send_document = MagicMock()
     handler["function"](msg)
 
-    assert bot_app.bot.reply_to.called
-    calls = bot_app.bot.reply_to.call_args_list
-    assert any("нет пиров для отчета" in str(call) for call in calls)
+    assert bot_app.bot.send_document.called
 
 
 def test_handle_status_callback_peer_not_found(bot_app):

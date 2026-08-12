@@ -111,7 +111,7 @@ pytest tests/ -v
 - `/check_now` — Запуск мгновенной проверки пиров вне очереди.
 - `/status` — Текущий статус работы бота, дата последней проверки и статистика БД.
 - `/peers [verified|suspicious|skipped_peers|expelled|all|tribe]` — Получение текущего списка пиров из БД (с фильтрацией).
-- `/export` — Экспорт текущих пиров в `.txt` файлы по трайбам (verified, suspicious, expelled).
+- `/export` — Экспорт текущих пиров в `.txt` файлы по трайбам (verified, suspicious, skipped, expelled).
 - `/peer <login>` — Просмотр карточки пира с кнопками быстрой смены статуса (`[ VERIFIED ]` / `[ SUSPICIOUS ]` / `[ EXPELLED ]`).
 - `/recheck <login>` — Ручная перепроверка пира через API S21 с обновлением данных и статуса в БД.
 

@@ -14,7 +14,7 @@ A peer is evaluated based on three strict criteria:
    - Fetched via `GET /v1/participants/{login}` (`className` field, e.g. `26_08_NN`).
    - Project IDs to check are dynamically determined from `TARGET_PROJECT_IDS_<WAVE_NAME>` environment variables (e.g. `TARGET_PROJECT_IDS_26_04_NN`).
    - If the peer's wave is not configured in environment variables or an API error (non-2xx response status code) occurs during project status requests, validation short-circuits with status `SKIPPED_PEERS` and records the explicit skip reason.
-   - Skipped peers are saved to SQLite DB so they are remembered in `known_logins` and omitted from subsequent scans.
+   - Skipped peers are saved to SQLite DB so they are remembered in `known_logins` and omitted from subsequent scans. They are included in `/export` and monitoring scan report attachments (`{tribe}_skipped.txt`).
    - `total_xp` is retrieved directly from the `expValue` profile attribute returned by `GET /v1/participants/{login}` without redundant experience-history API calls.
 
 2. **Accepted Target Projects:**
