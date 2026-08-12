@@ -36,14 +36,15 @@ class PeerValidator:
         if isinstance(xp_history, list):
             for entry in xp_history:
                 if isinstance(entry, dict):
-                    xp_val = entry.get("value") or entry.get("xp") or entry.get("exp", 0)
+                    xp_val = entry.get("expValue") or entry.get("value") or entry.get("xp") or entry.get("exp", 0)
                     if isinstance(xp_val, (int, float)):
                         total_xp += int(xp_val)
 
         if total_xp == 0 and isinstance(info, dict):
-            xp_val = info.get("xp") or info.get("totalXp") or info.get("experience", 0)
+            xp_val = info.get("expValue") or info.get("xp") or info.get("totalXp") or info.get("experience", 0)
             if isinstance(xp_val, (int, float)):
                 total_xp = int(xp_val)
+
 
         reasons = []
 

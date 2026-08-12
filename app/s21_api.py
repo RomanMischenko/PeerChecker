@@ -187,11 +187,18 @@ class S21ApiClient:
             if isinstance(data, list):
                 return data
             if isinstance(data, dict):
-                return data.get("items") or data.get("history") or data.get("xpHistory") or []
+                return (
+                    data.get("expHistory")
+                    or data.get("items")
+                    or data.get("history")
+                    or data.get("xpHistory")
+                    or []
+                )
             return []
         except S21ApiError as e:
             logger.warning(f"Could not fetch XP history for {login}: {e}")
             return []
+
 
     def get_participant_points(self, login: str) -> dict[str, Any]:
         """Fetch participant points and evaluation data. Endpoint: /v1/participants/{login}/points"""
