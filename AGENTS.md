@@ -31,6 +31,7 @@ A peer is evaluated based on three strict criteria:
   - `SKIPPED_PEERS`: Wave unconfigured in environment variables or API error encountered during project status checks.
   - `EXPELLED`: Peer was previously saved in SQLite DB (in any active status), but is missing from target coalition API responses during subsequent scans.
   - **Restoration Transition:** If a peer with status `EXPELLED` appears in target coalition API responses again, they are re-validated via `validate_peer(...)` and automatically moved back to their active status (`VERIFIED`, `SUSPICIOUS`, or `SKIPPED_PEERS`). A peer belongs to exactly one status at any given time.
+  - **Telegram Card Rendering:** Status strings sent in peer cards (`_build_peer_card_content`) escape Telegram Markdown v1 special characters (e.g. `SKIPPED\_PEERS`) to avoid entity parsing errors.
 
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, exponential backoff retries on `sqlite3.OperationalError` (database is locked), and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.

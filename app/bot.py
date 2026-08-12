@@ -504,10 +504,12 @@ class PeerCheckerBot:
             status_emoji = "✅ VERIFIED"
         elif status == "SUSPICIOUS":
             status_emoji = "⚠️ SUSPICIOUS"
+        elif status == "SKIPPED_PEERS":
+            status_emoji = "⏭️ SKIPPED\\_PEERS"
         elif status == "EXPELLED":
             status_emoji = "❌ EXPELLED"
         else:
-            status_emoji = f"ℹ️ {status}"
+            status_emoji = f"ℹ️ {escape_markdown(status)}"
 
         manual_flag = " (изменено вручную)" if peer.get("is_manual") else ""
 
@@ -526,9 +528,10 @@ class PeerCheckerBot:
         markup = types.InlineKeyboardMarkup()
         btn_v = types.InlineKeyboardButton("✅ Установить VERIFIED", callback_data=f"set_status:{login}:VERIFIED")
         btn_s = types.InlineKeyboardButton("⚠️ Установить SUSPICIOUS", callback_data=f"set_status:{login}:SUSPICIOUS")
+        btn_sk = types.InlineKeyboardButton("⏭️ Установить SKIPPED_PEERS", callback_data=f"set_status:{login}:SKIPPED_PEERS")
         btn_e = types.InlineKeyboardButton("❌ Установить EXPELLED", callback_data=f"set_status:{login}:EXPELLED")
         markup.add(btn_v, btn_s)
-        markup.add(btn_e)
+        markup.add(btn_sk, btn_e)
         return text, markup
 
     def _send_peer_card(self, chat_id: int, peer: dict[str, Any]) -> None:

@@ -136,6 +136,24 @@ def test_peer_card_null_first_seen(bot_app):
     assert "``" not in text
 
 
+def test_peer_card_skipped_peers(bot_app):
+    peer_data = {
+        "login": "benedisa",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SKIPPED_PEERS",
+        "xp": 0,
+        "logtime": 0.0,
+        "first_seen": "2026-08-12 22:04:37",
+        "suspicion_reason": "Ошибка API при проверке проекта 73187: HTTP 404 error",
+    }
+    text, markup = bot_app._build_peer_card_content(peer_data)
+    assert "SKIPPED\\_PEERS" in text
+    assert "benedisa" in text
+    assert "73187" in text
+
+
+
 def test_restore_monitoring_on_startup():
     """Ensure that if monitoring was active in storage, initializing PeerCheckerBot restores monitoring automatically."""
     with tempfile.TemporaryDirectory() as tmp_dir:
