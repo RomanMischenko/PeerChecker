@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import sys
 from app.config import config
 from app.storage import Storage
@@ -6,8 +7,9 @@ from app.bot import PeerCheckerBot
 
 
 def setup_logging() -> None:
-    """Configure system logging to stdout and file."""
-    log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    """Configure system logging to stdout and daily rotating file."""
+    log_format = "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(funcName)s): %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
 
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stdout),
@@ -15,15 +17,29 @@ def setup_logging() -> None:
 
     try:
         log_file = config.log_file
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        file_handler = TimedRotatingFileHandler(
+            filename=log_file,
+            when="midnight",
+            interval=1,
+            backupCount=30,
+            encoding="utf-8",
+            utc=False,
+        )
+        handlers.append(file_handler)
     except Exception as e:
         print(f"Warning: Could not setup file logging: {e}", file=sys.stderr)
 
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
+        datefmt=date_format,
         handlers=handlers,
     )
+
+    # Suppress verbose telebot info logs
+    logging.getLogger("telebot").setLevel(logging.WARNING)
+
+    logging.info("=== Logging system initialized ===")
 
 
 def main() -> None:

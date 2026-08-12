@@ -39,6 +39,12 @@ A peer is evaluated based on three strict criteria:
 - Reuses a persistent `requests.Session()` HTTP connection pool with context manager support (`__enter__`/`__exit__` and `close()`) to avoid TCP socket leaks.
 - Features exponential backoff retries for transient 5xx HTTP server errors and rate limits (429), fast-failing on non-retryable 4xx HTTP errors (400, 403, 404), plus automatic bearer token refresh on 401 Unauthorized responses. Safe parsing for null/missing `expires_in` values from Keycloak.
 
+### 4. Logging System (`setup_logging`)
+- Configures dual handlers: `StreamHandler` (stdout) and `TimedRotatingFileHandler` writing to `config.log_file` (`data/app.log` by default).
+- File logs rotate daily at midnight (`when='midnight'`, `interval=1`) keeping up to 30 days of archives (`backupCount=30`).
+- Formats log entries with timestamps (`%Y-%m-%d %H:%M:%S`), log levels, logger module names, filenames, and function names.
+- Filters out verbose info noise from third-party libraries (e.g. `telebot` log level set to `WARNING`).
+
 ---
 
 ## Important Constraints & Guidelines for AI Agents
