@@ -132,13 +132,6 @@ class Storage:
             rows = cursor.fetchall()
             return {row["login"] for row in rows}
 
-    def is_known_peer(self, login: str) -> bool:
-        """Check if login already exists in DB."""
-        with self.connection_scope() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM peers WHERE login = ?", (login,))
-            return cursor.fetchone() is not None
-
     def save_peer(self, peer: dict[str, Any], force: bool = False) -> None:
         """Insert a single peer record."""
         self.save_peers_batch([peer], force=force)

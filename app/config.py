@@ -91,11 +91,6 @@ class Config:
     S21_PASSWORD: str = field(
         default_factory=lambda: os.getenv("S21_PASSWORD", "").strip()
     )
-    CAMPUS_ID: str = field(
-        default_factory=lambda: os.getenv(
-            "CAMPUS_ID", "5a23bec9-f989-485d-935b-3f0dc61c4812"
-        ).strip()
-    )
     TARGET_COALITIONS: dict[int, str] = field(
         default_factory=lambda: parse_coalitions(os.getenv("TARGET_COALITIONS", ""))
     )
@@ -115,8 +110,6 @@ class Config:
     @property
     def wave_projects(self) -> dict[str, list[int]]:
         return parse_wave_projects_from_env()
-
-    BASE_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
 
     DATA_DIR: Path = field(
         default_factory=lambda: Path(os.getenv("DATA_DIR", "data"))

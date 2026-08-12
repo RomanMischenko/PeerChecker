@@ -30,7 +30,6 @@ class PeerValidator:
         self,
         target_project_ids: list[int] | None = None,
         min_accepted_projects: int = 3,
-        min_logtime: float = 0.0,
         target_class_names: list[str] | None = None,
         wave_projects: dict[str, list[int]] | None = None,
     ):

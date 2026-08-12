@@ -26,7 +26,6 @@ def test_save_and_retrieve_peer(storage):
 
     storage.save_peer(peer_data)
 
-    assert storage.is_known_peer("student1") is True
     assert "student1" in storage.get_known_logins()
 
     retrieved = storage.get_peer("student1")
