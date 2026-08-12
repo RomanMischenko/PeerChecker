@@ -193,7 +193,7 @@ def test_handle_export_skipped_wave_only(bot_app):
         "login": "skipped_peer",
         "tribe_id": 604,
         "tribe_name": "Northern",
-        "status": "SKIPPED_WAVE",
+        "status": "SKIPPED_PEERS",
         "xp": 0,
         "logtime": 0.0,
     })

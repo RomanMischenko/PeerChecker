@@ -34,7 +34,7 @@ A peer is evaluated based on three strict criteria:
 
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, exponential backoff retries on `sqlite3.OperationalError` (database is locked), and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.
-- Aggregated database statistics (`get_stats()`) accurately separate `VERIFIED`, `SUSPICIOUS`, and `SKIPPED_PEERS` metrics. Automatic SQL migration (`UPDATE peers SET status = 'SKIPPED_PEERS' WHERE status = 'SKIPPED_WAVE'`) maintains backward compatibility with legacy database files.
+- Aggregated database statistics (`get_stats()`) accurately separate `VERIFIED`, `SUSPICIOUS`, and `SKIPPED_PEERS` metrics.
 - Peer records are upserted via `ON CONFLICT(login) DO UPDATE`, preserving manual moderation flags unless forced during recheck (`force=True` in `save_peer`).
 - Bot state persistence (`bot_state` table) saves flags such as `monitoring_active`. Upon restart, `PeerCheckerBot` automatically restores active states and resumes background monitoring seamless loop if enabled prior to shutdown or crash.
 

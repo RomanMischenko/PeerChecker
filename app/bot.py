@@ -295,7 +295,7 @@ class PeerCheckerBot:
 
                 for arg in parts:
                     arg_upper = arg.upper()
-                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_PEERS", "SKIPPED_WAVE", "EXPELLED"):
+                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_PEERS", "EXPELLED"):
                         filter_status = arg_upper
                     elif arg_upper != "ALL":
                         filter_tribe = arg
@@ -333,11 +333,11 @@ class PeerCheckerBot:
 
                     v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
                     s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
-                    w_count = sum(1 for p in peers if p["status"] in ("SKIPPED_PEERS", "SKIPPED_WAVE"))
+                    w_count = sum(1 for p in peers if p["status"] == "SKIPPED_PEERS")
                     e_count = sum(1 for p in peers if p["status"] == "EXPELLED")
 
                     status_counts = [f"Verified: **{v_count}**", f"Suspicious: **{s_count}**"]
-                    if w_count > 0 or filter_status in ("SKIPPED_PEERS", "SKIPPED_WAVE"):
+                    if w_count > 0 or filter_status == "SKIPPED_PEERS":
                         status_counts.append(f"Skipped Peers: **{w_count}**")
                     if e_count > 0 or filter_status == "EXPELLED":
                         status_counts.append(f"Expelled: **{e_count}**")
@@ -384,7 +384,7 @@ class PeerCheckerBot:
                         tname = tpeers[0]["tribe_name"]
                         verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
                         suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
-                        skipped_peers = [p for p in tpeers if p["status"] in ("SKIPPED_PEERS", "SKIPPED_WAVE")]
+                        skipped_peers = [p for p in tpeers if p["status"] == "SKIPPED_PEERS"]
                         expelled_peers = [p for p in tpeers if p["status"] == "EXPELLED"]
 
                         if verified_peers:

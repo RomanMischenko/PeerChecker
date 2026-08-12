@@ -80,8 +80,6 @@ class Storage:
                 )
                 """
             )
-            # Automatic migration: SKIPPED_WAVE -> SKIPPED_PEERS
-            cursor.execute("UPDATE peers SET status = 'SKIPPED_PEERS' WHERE status = 'SKIPPED_WAVE';")
             conn.commit()
 
     def set_state(self, key: str, value: str) -> None:
@@ -320,7 +318,7 @@ class Storage:
                 if status == "VERIFIED":
                     stats["by_tribe"][tid]["verified"] += count
                     stats["total_verified"] += count
-                elif status in ("SKIPPED_PEERS", "SKIPPED_WAVE"):
+                elif status == "SKIPPED_PEERS":
                     stats["by_tribe"][tid]["skipped_peers"] += count
                     stats["total_skipped_peers"] += count
                 elif status == "EXPELLED":
