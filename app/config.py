@@ -65,6 +65,29 @@ def parse_class_names(raw_value: str) -> list[str]:
     return [item.strip().upper() for item in raw_value.split(",") if item.strip()]
 
 
+def parse_wave_projects_from_env(env_dict: dict[str, str] | None = None) -> dict[str, list[int]]:
+    """
+    Scan environment for TARGET_PROJECT_IDS_<WAVE_NAME> variables
+    and return mapping of wave name -> project IDs list.
+    Example: TARGET_PROJECT_IDS_26_04_NN="73187,73188" -> {"26_04_NN": [73187, 73188]}
+    """
+    source = env_dict if env_dict is not None else dict(os.environ)
+    result: dict[str, list[int]] = {}
+    prefix = "TARGET_PROJECT_IDS_"
+    for key, val in source.items():
+        if key.startswith(prefix) and len(key) > len(prefix):
+            wave_name = key[len(prefix):].strip().upper()
+            if wave_name:
+                pids = []
+                for item in val.split(","):
+                    cleaned = item.strip()
+                    if cleaned.isdigit():
+                        pids.append(int(cleaned))
+                if pids:
+                    result[wave_name] = pids
+    return result
+
+
 def _get_env_int(key: str, default: int) -> int:
     raw = os.getenv(key, "").strip()
     if not raw:
@@ -132,6 +155,10 @@ class Config:
     @property
     def target_class_names(self) -> list[str]:
         return parse_class_names(self.TARGET_CLASS_NAME)
+
+    @property
+    def wave_projects(self) -> dict[str, list[int]]:
+        return parse_wave_projects_from_env()
 
     BASE_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
 

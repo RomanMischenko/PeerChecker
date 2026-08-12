@@ -77,6 +77,7 @@ class PeerCheckerBot:
             min_accepted_projects=self.config.MIN_ACCEPTED_PROJECTS,
             min_logtime=self.config.MIN_LOGTIME,
             target_class_names=self.config.target_class_names,
+            wave_projects=self.config.wave_projects,
         )
 
         self.monitoring_active = False
@@ -181,7 +182,7 @@ class PeerCheckerBot:
                 total_all = stats.get("total", 0)
                 verified = stats.get("total_verified", 0)
                 suspicious = stats.get("total_suspicious", 0)
-                skipped = stats.get("total_skipped_wave", 0)
+                skipped = stats.get("total_skipped_peers", 0)
                 expelled = stats.get("total_expelled", 0)
 
                 lines = [
@@ -196,7 +197,7 @@ class PeerCheckerBot:
                     f"Всего записей:  {total_all}",
                     f"├ VERIFIED:     {verified}",
                     f"├ SUSPICIOUS:   {suspicious}",
-                    f"├ SKIPPED_WAVE: {skipped}",
+                    f"├ SKIPPED_PEERS:{skipped}",
                     f"└ EXPELLED:     {expelled}",
                     "",
                     "[По трайбам]",
@@ -211,7 +212,7 @@ class PeerCheckerBot:
                         ttotal = tdata.get("total", 0)
                         tver = tdata.get("verified", 0)
                         tsusp = tdata.get("suspicious", 0)
-                        tskip = tdata.get("skipped_wave", 0)
+                        tskip = tdata.get("skipped_peers", 0)
                         texp = tdata.get("expelled", 0)
                         lines.append(
                             f"• {tname:<12} ({tid}): {ttotal:<4} [V:{tver} | S:{tsusp} | Skip:{tskip} | Exp:{texp}]"
@@ -289,7 +290,7 @@ class PeerCheckerBot:
 
                 for arg in parts:
                     arg_upper = arg.upper()
-                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_WAVE", "EXPELLED"):
+                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_PEERS", "SKIPPED_WAVE", "EXPELLED"):
                         filter_status = arg_upper
                     elif arg_upper != "ALL":
                         filter_tribe = arg
@@ -327,12 +328,12 @@ class PeerCheckerBot:
 
                     v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
                     s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
-                    w_count = sum(1 for p in peers if p["status"] == "SKIPPED_WAVE")
+                    w_count = sum(1 for p in peers if p["status"] in ("SKIPPED_PEERS", "SKIPPED_WAVE"))
                     e_count = sum(1 for p in peers if p["status"] == "EXPELLED")
 
                     status_counts = [f"Verified: **{v_count}**", f"Suspicious: **{s_count}**"]
-                    if w_count > 0 or filter_status == "SKIPPED_WAVE":
-                        status_counts.append(f"Skipped Wave: **{w_count}**")
+                    if w_count > 0 or filter_status in ("SKIPPED_PEERS", "SKIPPED_WAVE"):
+                        status_counts.append(f"Skipped Peers: **{w_count}**")
                     if e_count > 0 or filter_status == "EXPELLED":
                         status_counts.append(f"Expelled: **{e_count}**")
 
@@ -656,7 +657,7 @@ class PeerCheckerBot:
 
                 new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
                 all_new_peers: list[dict[str, Any]] = []
-                skipped_wave_count = 0
+                skipped_peers_count = 0
 
                 for idx, (login, tid, tname) in enumerate(logins_to_validate):
                     if is_background and (self.stop_event.is_set() or self.monitoring_thread != current_t):
@@ -676,7 +677,7 @@ class PeerCheckerBot:
                         self.storage.save_peer(val_res)
 
                         if val_res.get("is_skipped"):
-                            skipped_wave_count += 1
+                            skipped_peers_count += 1
                         else:
                             new_peers_by_tribe.setdefault(tid, []).append(val_res)
                             all_new_peers.append(val_res)
@@ -730,13 +731,12 @@ class PeerCheckerBot:
                     else:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                            f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
-                            f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
-                            f"• **Проверено логинов:** {len(logins_to_validate)} (все из других волн, пропущены)\n"
+                            f"• **Результат:** Пиры целевых волн пока не прошли проверку.\n"
+                            f"• **Проверено логинов:** {len(logins_to_validate)} (пропущено: {skipped_peers_count})\n"
                             f"• **Отчислено за эту проверку:** {total_expelled_count} чел.\n"
                             f"• **Последняя проверка:** `{escape_code_block(now_str)}`"
                         )
-                        log_msg = f"Проверено {len(logins_to_validate)} пиров, целевой волны ({target_wave_str}) не обнаружено (отчислено: {total_expelled_count})"
+                        log_msg = f"Проверено {len(logins_to_validate)} пиров (пропущено: {skipped_peers_count}, отчислено: {total_expelled_count})"
 
                     if total_expelled_count == 0 or len(logins_to_validate) > 0:
                         self._send_to_admins(report_text)
@@ -746,12 +746,11 @@ class PeerCheckerBot:
                 # Summary for newly found target wave peers
                 total_new = len(all_new_peers)
                 summary_text = (
-                    f"🚨 **Обнаружены новые/восстановленные пиры целевой волны!** ({total_new} чел.)\n"
-                    f"• **Целевая волна:** `{escape_code_block(target_wave_str)}`\n"
+                    f"🚨 **Обнаружены новые/восстановленные пиры!** ({total_new} чел.)\n"
                     f"• **Время проверки:** `{escape_code_block(now_str)}`\n"
                 )
-                if skipped_wave_count > 0:
-                    summary_text += f"• **Пропущено из других волн:** {skipped_wave_count} чел.\n"
+                if skipped_peers_count > 0:
+                    summary_text += f"• **Пропущено пиров:** {skipped_peers_count} чел.\n"
                 summary_text += "\n📊 **Распределение по трайбам:**\n"
 
                 for tid, tname in self.config.TARGET_COALITIONS.items():

@@ -110,7 +110,7 @@ def test_stats_and_check_logs(storage):
         {"login": "p1", "tribe_id": 604, "tribe_name": "Northern", "status": "VERIFIED", "xp": 10, "logtime": 1.0},
         {"login": "p2", "tribe_id": 604, "tribe_name": "Northern", "status": "SUSPICIOUS", "xp": 0, "logtime": 0.0},
         {"login": "p3", "tribe_id": 605, "tribe_name": "Powder", "status": "VERIFIED", "xp": 50, "logtime": 3.0},
-        {"login": "p4", "tribe_id": 605, "tribe_name": "Powder", "status": "SKIPPED_WAVE", "xp": 0, "logtime": 0.0},
+        {"login": "p4", "tribe_id": 605, "tribe_name": "Powder", "status": "SKIPPED_PEERS", "xp": 0, "logtime": 0.0},
     ]
     storage.save_peers_batch(peers)
 
@@ -118,7 +118,7 @@ def test_stats_and_check_logs(storage):
     assert stats["total"] == 4
     assert stats["total_verified"] == 2
     assert stats["total_suspicious"] == 1
-    assert stats["total_skipped_wave"] == 1
+    assert stats["total_skipped_peers"] == 1
 
     log_id = storage.log_check_run(2, "Test check log")
     assert log_id > 0

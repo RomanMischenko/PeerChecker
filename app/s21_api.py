@@ -240,7 +240,7 @@ class S21ApiClient:
             return data if isinstance(data, dict) else {}
         except S21ApiError as e:
             logger.debug(f"Could not fetch project {project_id} for {login}: {e}")
-            return {}
+            return {"_error": str(e)}
 
     def get_participant_feedback(self, login: str) -> dict[str, Any]:
         """Fetch average participant feedback points. Endpoint: /v1/participants/{login}/feedback"""

@@ -32,6 +32,7 @@ class PeerValidator:
         min_accepted_projects: int = 3,
         min_logtime: float = 0.0,
         target_class_names: list[str] | None = None,
+        wave_projects: dict[str, list[int]] | None = None,
     ):
         self.target_project_ids = (
             target_project_ids
@@ -41,6 +42,7 @@ class PeerValidator:
         self.min_accepted_projects = min_accepted_projects
         self.min_logtime = min_logtime
         self.target_class_names = [tc.upper() for tc in target_class_names] if target_class_names else []
+        self.wave_projects = {k.upper(): v for k, v in wave_projects.items()} if wave_projects else {}
 
     def validate_peer(
         self,
@@ -51,7 +53,8 @@ class PeerValidator:
     ) -> dict[str, Any]:
         """
         Gathers participant details via API client and evaluates whether the peer is
-        VERIFIED (live student) or SUSPICIOUS (test/inactive account) based on target projects status.
+        VERIFIED (live student), SUSPICIOUS (test/inactive account), or SKIPPED_PEERS
+        (unconfigured wave or project API errors).
         """
         prefix = f"[{current_index}/{total_count}] " if (current_index is not None and total_count is not None) else ""
         logger.info(f"{prefix}Starting validation for peer: {login}")
@@ -59,32 +62,57 @@ class PeerValidator:
         # Fetch detailed info
         info = api_client.get_participant_info(login)
         class_name = info.get("className") if isinstance(info, dict) else None
-
-        # Wave / className filter: if target_class_names is set, skip peers not belonging to the wave
         display_class = class_name if class_name else "Не указана"
-        if self.target_class_names:
-            peer_class = (class_name or "").strip().upper()
+        peer_class = (class_name or "").strip().upper()
+
+        # Determine target project IDs for this peer
+        target_project_ids: list[int] = []
+
+        if self.wave_projects:
+            if peer_class in self.wave_projects:
+                target_project_ids = self.wave_projects[peer_class]
+                logger.info(
+                    f"[{login}] Wave '{display_class}' matched in wave_projects -> Checking {len(target_project_ids)} projects"
+                )
+            else:
+                reason = f"Волна '{display_class}' не имеет настроенных проектов в .env"
+                logger.info(f"[{login}] RESULT: SKIPPED_PEERS | {reason}")
+                return {
+                    "login": login,
+                    "status": "SKIPPED_PEERS",
+                    "is_skipped": True,
+                    "class_name": display_class,
+                    "total_xp": 0,
+                    "logtime": 0.0,
+                    "accepted_projects_count": 0,
+                    "suspicion_reasons": [reason],
+                    "suspicion_reason_text": f"Пропущена волна: {display_class} (нет списка проектов)",
+                    "details": {"info": info},
+                }
+        elif self.target_class_names:
             is_match = peer_class in self.target_class_names
             expected_str = ", ".join(self.target_class_names)
             logger.info(
                 f"[{login}] GET /v1/participants/{login} -> Wave className: '{display_class}' (Match: {'YES' if is_match else 'NO, expected ' + expected_str})"
             )
             if not is_match:
-                logger.info(f"[{login}] RESULT: SKIPPED_WAVE | Skipping project & feedback checks (Wave mismatch)")
+                reason = f"Волна '{display_class}' не совпадает с целевой '{expected_str}'"
+                logger.info(f"[{login}] RESULT: SKIPPED_PEERS | {reason}")
                 return {
                     "login": login,
-                    "status": "SKIPPED_WAVE",
+                    "status": "SKIPPED_PEERS",
                     "is_skipped": True,
                     "class_name": display_class,
                     "total_xp": 0,
                     "logtime": 0.0,
                     "accepted_projects_count": 0,
-                    "suspicion_reasons": [f"Волна '{display_class}' не совпадает с целевой '{expected_str}'"],
+                    "suspicion_reasons": [reason],
                     "suspicion_reason_text": f"Пропущена волна: {display_class}",
                     "details": {"info": info},
                 }
+            target_project_ids = self.target_project_ids
         else:
-            logger.info(f"[{login}] GET /v1/participants/{login} -> Wave className: '{display_class}'")
+            target_project_ids = self.target_project_ids
 
         logtime = api_client.get_participant_logtime(login)
 
@@ -92,10 +120,27 @@ class PeerValidator:
         total_xp = _safe_int(info.get("expValue")) if isinstance(info, dict) else 0
 
         # Check projects: count ACCEPTED projects among target_project_ids via GET /v1/participants/{login}/projects/{projectId}
-        logger.info(f"[{login}] Checking {len(self.target_project_ids)} target projects status...")
+        logger.info(f"[{login}] Checking {len(target_project_ids)} target projects status...")
         accepted_projects = []
-        for pid in self.target_project_ids:
+        for pid in target_project_ids:
             proj_data = api_client.get_participant_project(login, pid)
+            if isinstance(proj_data, dict) and "_error" in proj_data:
+                err_msg = proj_data["_error"]
+                reason = f"Ошибка API при проверке проекта {pid}: {err_msg}"
+                logger.info(f"[{login}] RESULT: SKIPPED_PEERS | {reason}")
+                return {
+                    "login": login,
+                    "status": "SKIPPED_PEERS",
+                    "is_skipped": True,
+                    "class_name": display_class,
+                    "total_xp": total_xp,
+                    "logtime": logtime,
+                    "accepted_projects_count": 0,
+                    "suspicion_reasons": [reason],
+                    "suspicion_reason_text": reason,
+                    "details": {"info": info},
+                }
+
             p_status = proj_data.get("status", "NOT_STARTED").upper() if isinstance(proj_data, dict) else "NOT_FOUND"
             title = proj_data.get("title") if isinstance(proj_data, dict) else str(pid)
             title = title or str(pid)
@@ -105,7 +150,7 @@ class PeerValidator:
 
         accepted_count = len(accepted_projects)
         logger.info(
-            f"[{login}] Projects check complete: {accepted_count}/{len(self.target_project_ids)} ACCEPTED (Required min: {self.min_accepted_projects})"
+            f"[{login}] Projects check complete: {accepted_count}/{len(target_project_ids)} ACCEPTED (Required min: {self.min_accepted_projects})"
         )
 
         # Fetch feedback data: /v1/participants/{login}/feedback

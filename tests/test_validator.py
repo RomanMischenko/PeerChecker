@@ -65,7 +65,7 @@ def test_validate_peer_skipped_wave():
     validator = PeerValidator(target_class_names=["25_10_NN"])
     result = validator.validate_peer(mock_api, "other_wave_peer")
 
-    assert result["status"] == "SKIPPED_WAVE"
+    assert result["status"] == "SKIPPED_PEERS"
     assert result["is_skipped"] is True
     # Ensure no project status API calls were made
     mock_api.get_participant_project.assert_not_called()
@@ -99,9 +99,36 @@ def test_validate_peer_none_class_name():
     validator = PeerValidator(target_class_names=["26_08_NN"])
     result = validator.validate_peer(mock_api, "no_class_peer")
 
-    assert result["status"] == "SKIPPED_WAVE"
+    assert result["status"] == "SKIPPED_PEERS"
     assert result["class_name"] == "Не указана"
     assert "Волна 'Не указана'" in result["suspicion_reasons"][0]
+
+
+def test_validate_peer_wave_projects_unconfigured():
+    mock_api = MagicMock()
+    mock_api.get_participant_info.return_value = {"login": "unconf_peer", "className": "26_11_NN"}
+
+    wave_projects = {"26_04_NN": [73187, 73188]}
+    validator = PeerValidator(wave_projects=wave_projects)
+    result = validator.validate_peer(mock_api, "unconf_peer")
+
+    assert result["status"] == "SKIPPED_PEERS"
+    assert result["is_skipped"] is True
+    assert "не имеет настроенных проектов" in result["suspicion_reasons"][0]
+
+
+def test_validate_peer_project_api_error():
+    mock_api = MagicMock()
+    mock_api.get_participant_info.return_value = {"login": "err_peer", "className": "26_04_NN"}
+    mock_api.get_participant_project.return_value = {"_error": "HTTP 404 error"}
+
+    wave_projects = {"26_04_NN": [73187]}
+    validator = PeerValidator(wave_projects=wave_projects)
+    result = validator.validate_peer(mock_api, "err_peer")
+
+    assert result["status"] == "SKIPPED_PEERS"
+    assert result["is_skipped"] is True
+    assert "Ошибка API при проверке проекта" in result["suspicion_reasons"][0]
 
 
 

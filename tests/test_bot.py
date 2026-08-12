@@ -230,14 +230,14 @@ def test_handle_peers_skipped_wave(bot_app):
         "login": "wave_peer",
         "tribe_id": 604,
         "tribe_name": "Northern",
-        "status": "SKIPPED_WAVE",
+        "status": "SKIPPED_PEERS",
         "xp": 0,
         "logtime": 0.0,
     })
 
     msg = MagicMock()
     msg.from_user.id = 12345
-    msg.text = "/peers SKIPPED_WAVE"
+    msg.text = "/peers SKIPPED_PEERS"
 
     handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"]["commands"]][0]
     bot_app.bot.send_document = MagicMock()
@@ -245,7 +245,7 @@ def test_handle_peers_skipped_wave(bot_app):
 
     assert bot_app.bot.send_document.called
     args, kwargs = bot_app.bot.send_document.call_args
-    assert "Skipped Wave" in kwargs.get("caption", "")
+    assert "Skipped Peers" in kwargs.get("caption", "")
 
 
 def test_handle_peers_expelled(bot_app):

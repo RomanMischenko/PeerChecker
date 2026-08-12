@@ -10,14 +10,15 @@ PeerChecker is an automated Python Telegram Bot (`pyTelegramBotAPI`) for School 
 ### 1. Peer Validation Logic (`PeerValidator`)
 A peer is evaluated based on three strict criteria:
 
-1. **Wave / Class Name Filter (`TARGET_CLASS_NAME`):**
+1. **Wave Project Mapping (`TARGET_PROJECT_IDS_<WAVE_NAME>`):**
    - Fetched via `GET /v1/participants/{login}` (`className` field, e.g. `26_08_NN`).
-   - If `TARGET_CLASS_NAME` is configured and the peer's `className` does not match, validation short-circuits with status `SKIPPED_WAVE`. Project and feedback API calls are skipped to conserve API rate limits.
-   - Skipped wave peers are saved to SQLite DB so they are remembered in `known_logins` and omitted from subsequent scans.
+   - Project IDs to check are dynamically determined from `TARGET_PROJECT_IDS_<WAVE_NAME>` environment variables (e.g. `TARGET_PROJECT_IDS_26_04_NN`).
+   - If the peer's wave is not configured in environment variables or an API error (non-2xx response status code) occurs during project status requests, validation short-circuits with status `SKIPPED_PEERS` and records the explicit skip reason.
+   - Skipped peers are saved to SQLite DB so they are remembered in `known_logins` and omitted from subsequent scans.
    - `total_xp` is retrieved directly from the `expValue` profile attribute returned by `GET /v1/participants/{login}` without redundant experience-history API calls.
 
 2. **Accepted Target Projects:**
-   - Checked via `GET /v1/participants/{login}/projects/{projectId}` across `TARGET_PROJECT_IDS` (default list: `73187, 73188, 73189, 73328, 73190, 73191, 73192, 73193, 73194, 73195, 73196` representing Week 01 & Week 02 projects).
+   - Checked via `GET /v1/participants/{login}/projects/{projectId}` across the project IDs mapped to the peer's wave.
    - Peer must have at least `MIN_ACCEPTED_PROJECTS` (default: 3) in `ACCEPTED` status.
 
 3. **Peer Feedback Scores:**
@@ -25,15 +26,15 @@ A peer is evaluated based on three strict criteria:
    - All 4 verifier feedback fields (`averageVerifierPunctuality`, `averageVerifierInterest`, `averageVerifierThoroughness`, `averageVerifierFriendliness`) must be strictly > 0.
 
 - **Status Assignment & Lifecycle:**
-  - `VERIFIED`: Target wave matched, `ACCEPTED` projects >= 3, and all 4 feedback scores > 0.
-  - `SUSPICIOUS`: Target wave matched, but either accepted projects < 3 or feedback scores are 0 (test/inactive accounts).
-  - `SKIPPED_WAVE`: Wave `className` does not match `TARGET_CLASS_NAME`.
+  - `VERIFIED`: Wave projects configured, `ACCEPTED` projects >= 3, and all 4 feedback scores > 0.
+  - `SUSPICIOUS`: Wave projects configured, but either accepted projects < 3 or feedback scores are 0 (test/inactive accounts).
+  - `SKIPPED_PEERS`: Wave unconfigured in environment variables or API error encountered during project status checks.
   - `EXPELLED`: Peer was previously saved in SQLite DB (in any active status), but is missing from target coalition API responses during subsequent scans.
-  - **Restoration Transition:** If a peer with status `EXPELLED` appears in target coalition API responses again, they are re-validated via `validate_peer(...)` and automatically moved back to their active status (`VERIFIED`, `SUSPICIOUS`, or `SKIPPED_WAVE`). A peer belongs to exactly one status at any given time.
+  - **Restoration Transition:** If a peer with status `EXPELLED` appears in target coalition API responses again, they are re-validated via `validate_peer(...)` and automatically moved back to their active status (`VERIFIED`, `SUSPICIOUS`, or `SKIPPED_PEERS`). A peer belongs to exactly one status at any given time.
 
 ### 2. Storage & Database Concurrency (`Storage`)
 - SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, exponential backoff retries on `sqlite3.OperationalError` (database is locked), and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.
-- Aggregated database statistics (`get_stats()`) accurately separate `VERIFIED`, `SUSPICIOUS`, and `SKIPPED_WAVE` metrics.
+- Aggregated database statistics (`get_stats()`) accurately separate `VERIFIED`, `SUSPICIOUS`, and `SKIPPED_PEERS` metrics. Automatic SQL migration (`UPDATE peers SET status = 'SKIPPED_PEERS' WHERE status = 'SKIPPED_WAVE'`) maintains backward compatibility with legacy database files.
 - Peer records are upserted via `ON CONFLICT(login) DO UPDATE`, preserving manual moderation flags (`is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END`).
 - Bot state persistence (`bot_state` table) saves flags such as `monitoring_active`. Upon restart, `PeerCheckerBot` automatically restores active states and resumes background monitoring seamless loop if enabled prior to shutdown or crash.
 
