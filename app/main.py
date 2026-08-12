@@ -1,9 +1,22 @@
 import logging
 from logging.handlers import TimedRotatingFileHandler
+import os
 import sys
+import time
 from app.config import config
 from app.storage import Storage
 from app.bot import PeerCheckerBot
+
+
+def setup_timezone() -> None:
+    """Apply configured timezone to Python runtime environment."""
+    tz = config.TZ
+    os.environ["TZ"] = tz
+    if hasattr(time, "tzset"):
+        try:
+            time.tzset()
+        except Exception as e:
+            print(f"Warning: Could not apply timezone '{tz}': {e}", file=sys.stderr)
 
 
 def setup_logging() -> None:
@@ -43,6 +56,7 @@ def setup_logging() -> None:
 
 
 def main() -> None:
+    setup_timezone()
     setup_logging()
     logger = logging.getLogger(__name__)
 

@@ -125,6 +125,9 @@ class Config:
     TARGET_CLASS_NAME: str = field(
         default_factory=lambda: os.getenv("TARGET_CLASS_NAME", "").strip()
     )
+    TZ: str = field(
+        default_factory=lambda: os.getenv("TZ", "Europe/Moscow").strip()
+    )
 
     @property
     def target_class_names(self) -> list[str]:
