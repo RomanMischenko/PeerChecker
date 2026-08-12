@@ -196,7 +196,7 @@ class PeerCheckerBot:
 
             peers = self.storage.get_filtered_peers(tribe_id=filter_tribe, status=filter_status)
             if not peers:
-                self.bot.reply_to(message, "❌ Пиров по данному запросу не найдено.", parse_mode="Markdown")
+                self.bot.reply_to(message, "Пиров по данному запросу не найдено.", parse_mode="Markdown")
                 return
 
             filter_desc = []
@@ -206,36 +206,42 @@ class PeerCheckerBot:
                 filter_desc.append(f"статус: `{filter_status}`")
             desc_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
 
-            if len(peers) <= 20:
-                text = f"📋 **Список пиров из БД{desc_str}** (всего: {len(peers)}):\n\n"
-                for p in peers:
-                    status_icon = "✅" if p["status"] == "VERIFIED" else "⚠️"
-                    text += f"• {status_icon} `{p['login']}` | {p['tribe_name']} | XP: {p['xp']} | Logtime: {p['logtime']:.2f}h\n"
-                self.bot.reply_to(message, text, parse_mode="Markdown")
-            else:
-                now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"peers_export_{now_str}.txt"
-                temp_path = os.path.join(tempfile.gettempdir(), filename)
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
-                    if desc_str:
-                        f.write(f"Фильтр: {desc_str}\n")
-                    f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
-                    for p in peers:
-                        f.write(
-                            f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
-                            f"Статус: {p['status']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                        )
-                        if p.get("suspicion_reason"):
-                            f.write(f"  Причина: {p['suspicion_reason']}\n")
+            now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"peers_{now_str}.txt"
+            temp_path = os.path.join(tempfile.gettempdir(), filename)
 
-                caption = f"📋 **Экспорт пиров из БД{desc_str}** (всего {len(peers)} чел.)"
-                with open(temp_path, "rb") as doc:
-                    self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
+                if desc_str:
+                    f.write(f"Фильтры: {desc_str}\n")
+                f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
+                for p in peers:
+                    manual_str = " [ручной статус]" if p.get("is_manual") else ""
+                    f.write(
+                        f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
+                        f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                    )
+                    if p.get("suspicion_reason"):
+                        f.write(f"  Причина: {p['suspicion_reason']}\n")
+
+            v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
+            s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
+
+            caption = (
+                f"**Список пиров из БД{desc_str}**\n\n"
+                f"• Всего найдено: **{len(peers)}** чел.\n"
+                f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
+                f"Подробный список прикреплен в файле."
+            )
+
+            with open(temp_path, "rb") as doc:
+                self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
+
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
 
         @self.bot.message_handler(commands=["export", "export_txt"])
         @admin_only
