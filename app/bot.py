@@ -116,7 +116,6 @@ class PeerCheckerBot:
                 "/peers — Список пиров из БД (/peers verified, /peers 604)\n"
                 "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
                 "/peer <login> — Карточка пира с возможностью смены статуса\n"
-                "/set_status <login> <verified|suspicious> — Ручная смена статуса пира\n"
             )
             self.bot.reply_to(message, text)
 
@@ -244,40 +243,6 @@ class PeerCheckerBot:
                 self._send_peer_card(message.chat.id, peer)
             except Exception as e:
                 logger.error(f"Error handling /peer: {e}", exc_info=True)
-                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
-
-        @self.bot.message_handler(commands=["set_status", "setstatus"])
-        @admin_only
-        def handle_set_status(message: types.Message) -> None:
-            try:
-                parts = message.text.strip().split()
-                if len(parts) < 3:
-                    self.bot.reply_to(
-                        message,
-                        "Формат команды: `/set_status <login> <verified|suspicious|expelled>`",
-                        parse_mode="Markdown",
-                    )
-                    return
-
-                login = parts[1].strip()
-                new_status = parts[2].strip().upper()
-
-                if new_status not in ("VERIFIED", "SUSPICIOUS", "EXPELLED"):
-                    self.bot.reply_to(message, "Статус должен быть `VERIFIED`, `SUSPICIOUS` или `EXPELLED`.", parse_mode="Markdown")
-                    return
-
-                updated = self.storage.update_peer_status(login, new_status, is_manual=True)
-                if updated:
-                    self.bot.reply_to(
-                        message,
-                        f"Статус пира `{escape_code_block(login)}` успешно изменен на **{new_status}** (ручная модерация).",
-                        parse_mode="Markdown",
-                    )
-                else:
-                    self.bot.reply_to(message, f"Пир `{escape_code_block(login)}` не найден в базе данных.", parse_mode="Markdown")
-            except Exception as e:
-                logger.error(f"Error handling /set_status: {e}", exc_info=True)
-                self.bot.reply_to(message, f"❌ Ошибка при выполнении команды: {e}")
 
         @self.bot.message_handler(commands=["peers", "list"])
         @admin_only
