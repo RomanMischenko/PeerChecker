@@ -80,6 +80,8 @@ class Storage:
                 )
                 """
             )
+            # Automatic migration: SKIPPED_WAVE -> SKIPPED_PEERS
+            cursor.execute("UPDATE peers SET status = 'SKIPPED_PEERS' WHERE status = 'SKIPPED_WAVE';")
             conn.commit()
 
     def set_state(self, key: str, value: str) -> None:
