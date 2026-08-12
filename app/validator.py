@@ -56,13 +56,31 @@ class PeerValidator:
                 accepted_projects.append({"id": pid, "title": title})
 
         accepted_count = len(accepted_projects)
+
+
+        # Fetch feedback data: /v1/participants/{login}/feedback
+
+        feedback = api_client.get_participant_feedback(login)
+        punctuality = float(feedback.get("averageVerifierPunctuality", 0)) if isinstance(feedback, dict) else 0.0
+        interest = float(feedback.get("averageVerifierInterest", 0)) if isinstance(feedback, dict) else 0.0
+        thoroughness = float(feedback.get("averageVerifierThoroughness", 0)) if isinstance(feedback, dict) else 0.0
+        friendliness = float(feedback.get("averageVerifierFriendliness", 0)) if isinstance(feedback, dict) else 0.0
+
+        has_feedback = (
+            punctuality > 0 and interest > 0 and thoroughness > 0 and friendliness > 0
+        )
+
         reasons = []
 
-        # Criterion: Target Projects count in ACCEPTED status (must be >= min_accepted_projects)
+        # Criterion 1: Target Projects count in ACCEPTED status (must be >= min_accepted_projects)
         if accepted_count < self.min_accepted_projects:
             reasons.append(
                 f"Сдано проектов из списка: {accepted_count} (требуется минимум {self.min_accepted_projects})"
             )
+
+        # Criterion 2: Peer Feedback scores must be non-zero
+        if not has_feedback:
+            reasons.append("Оценки фидбека проверяющего равны 0 (учетная запись не получала фидбеков)")
 
         status = "VERIFIED" if not reasons else "SUSPICIOUS"
 
@@ -70,6 +88,7 @@ class PeerValidator:
             "info": info,
             "accepted_count": accepted_count,
             "accepted_projects": accepted_projects,
+            "feedback": feedback,
             "xp_history_count": len(xp_history) if isinstance(xp_history, list) else 0,
         }
 
@@ -79,10 +98,12 @@ class PeerValidator:
             "total_xp": total_xp,
             "logtime": logtime,
             "accepted_projects_count": accepted_count,
+            "feedback": feedback,
             "suspicion_reasons": reasons,
-            "suspicion_reason_text": "; ".join(reasons) if reasons else "Прошел проверку (проекты сданы)",
+            "suspicion_reason_text": "; ".join(reasons) if reasons else "Прошел проверку (проекты сданы, фидбек есть)",
             "details": details,
         }
+
 
         logger.info(
             f"Peer {login} validated as {status} (Accepted Projects={accepted_count}/{self.min_accepted_projects}, XP={total_xp})"

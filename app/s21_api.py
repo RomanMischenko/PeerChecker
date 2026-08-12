@@ -218,3 +218,13 @@ class S21ApiClient:
             logger.debug(f"Could not fetch project {project_id} for {login}: {e}")
             return {}
 
+    def get_participant_feedback(self, login: str) -> dict[str, Any]:
+        """Fetch average participant feedback points. Endpoint: /v1/participants/{login}/feedback"""
+        try:
+            data = self._request("GET", f"/v1/participants/{login}/feedback")
+            return data if isinstance(data, dict) else {}
+        except S21ApiError as e:
+            logger.debug(f"Could not fetch feedback for {login}: {e}")
+            return {}
+
+

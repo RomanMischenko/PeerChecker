@@ -7,6 +7,12 @@ def test_validate_peer_verified():
     mock_api.get_participant_info.return_value = {"login": "active_peer"}
     mock_api.get_participant_logtime.return_value = 14.5
     mock_api.get_participant_xp_history.return_value = [{"expValue": 1250}]
+    mock_api.get_participant_feedback.return_value = {
+        "averageVerifierPunctuality": 4.5,
+        "averageVerifierInterest": 4.8,
+        "averageVerifierThoroughness": 5.0,
+        "averageVerifierFriendliness": 4.9,
+    }
 
     # Mock projects to return ACCEPTED for 3 projects
     def mock_get_project(login, pid):
@@ -30,6 +36,12 @@ def test_validate_peer_suspicious():
     mock_api.get_participant_info.return_value = {"login": "test_acc"}
     mock_api.get_participant_logtime.return_value = 0.0
     mock_api.get_participant_xp_history.return_value = []
+    mock_api.get_participant_feedback.return_value = {
+        "averageVerifierPunctuality": 0,
+        "averageVerifierInterest": 0,
+        "averageVerifierThoroughness": 0,
+        "averageVerifierFriendliness": 0,
+    }
 
     # Mock projects to return ACCEPTED for only 1 project
     def mock_get_project(login, pid):
@@ -45,4 +57,5 @@ def test_validate_peer_suspicious():
     assert result["status"] == "SUSPICIOUS"
     assert result["accepted_projects_count"] == 1
     assert len(result["suspicion_reasons"]) > 0
+
 
