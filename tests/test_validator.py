@@ -59,3 +59,18 @@ def test_validate_peer_suspicious():
     assert len(result["suspicion_reasons"]) > 0
 
 
+def test_validate_peer_skipped_wave():
+    mock_api = MagicMock()
+    mock_api.get_participant_info.return_value = {"login": "other_wave_peer", "className": "24_01_NN"}
+
+    validator = PeerValidator(target_class_names=["25_10_NN"])
+    result = validator.validate_peer(mock_api, "other_wave_peer")
+
+    assert result["status"] == "SKIPPED_WAVE"
+    assert result["is_skipped"] is True
+    # Ensure no project status API calls were made
+    mock_api.get_participant_project.assert_not_called()
+    mock_api.get_participant_feedback.assert_not_called()
+
+
+

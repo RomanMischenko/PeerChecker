@@ -26,7 +26,9 @@ class PeerCheckerBot:
             target_project_ids=self.config.TARGET_PROJECT_IDS,
             min_accepted_projects=self.config.MIN_ACCEPTED_PROJECTS,
             min_logtime=self.config.MIN_LOGTIME,
+            target_class_names=self.config.target_class_names,
         )
+
 
 
         self.monitoring_active = False
@@ -421,12 +423,16 @@ class PeerCheckerBot:
                             val_res["tribe_name"] = tribe_name
                             val_res["xp"] = val_res["total_xp"]
                             val_res["logtime"] = val_res["logtime"]
-                            tribe_new_peers.append(val_res)
-                            all_new_peers.append(val_res)
-                            # Save peer to DB immediately so validated progress is retained even if stopped early
+
+                            # Save peer to DB immediately so validated progress is retained
                             self.storage.save_peer(val_res)
-                            # Update known logins set in memory for this run
                             known_logins.add(login)
+
+                            # Only add to notifications if not skipped by wave filter
+                            if not val_res.get("is_skipped"):
+                                tribe_new_peers.append(val_res)
+                                all_new_peers.append(val_res)
+
 
                         except Exception as e:
                             logger.error(f"Error validating peer {login}: {e}")

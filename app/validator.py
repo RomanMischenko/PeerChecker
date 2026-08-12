@@ -11,6 +11,7 @@ class PeerValidator:
         target_project_ids: list[int] | None = None,
         min_accepted_projects: int = 3,
         min_logtime: float = 0.0,
+        target_class_names: list[str] | None = None,
     ):
         self.target_project_ids = (
             target_project_ids
@@ -19,6 +20,7 @@ class PeerValidator:
         )
         self.min_accepted_projects = min_accepted_projects
         self.min_logtime = min_logtime
+        self.target_class_names = [tc.upper() for tc in target_class_names] if target_class_names else []
 
     def validate_peer(self, api_client: S21ApiClient, login: str) -> dict[str, Any]:
         """
@@ -27,10 +29,33 @@ class PeerValidator:
         """
         logger.info(f"Validating peer: {login}")
 
-        # Fetch detailed info & logtime for details card
+        # Fetch detailed info
         info = api_client.get_participant_info(login)
+        class_name = info.get("className") if isinstance(info, dict) else None
+
+        # Wave / className filter: if target_class_names is set, skip peers not belonging to the wave
+        if self.target_class_names:
+            peer_class = (class_name or "").strip().upper()
+            if peer_class not in self.target_class_names:
+                logger.info(
+                    f"Peer {login} className '{class_name}' does not match target wave '{', '.join(self.target_class_names)}'. Skipping."
+                )
+                return {
+                    "login": login,
+                    "status": "SKIPPED_WAVE",
+                    "is_skipped": True,
+                    "class_name": class_name,
+                    "total_xp": 0,
+                    "logtime": 0.0,
+                    "accepted_projects_count": 0,
+                    "suspicion_reasons": [f"Волна '{class_name}' не совпадает с целевой '{', '.join(self.target_class_names)}'"],
+                    "suspicion_reason_text": f"Пропущена волна: {class_name}",
+                    "details": {"info": info},
+                }
+
         logtime = api_client.get_participant_logtime(login)
         xp_history = api_client.get_participant_xp_history(login)
+
 
         # Calculate total XP for reference
         total_xp = 0

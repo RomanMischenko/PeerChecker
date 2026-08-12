@@ -58,6 +58,13 @@ def parse_project_ids(raw_value: str) -> list[int]:
     return result if result else default_ids
 
 
+def parse_class_names(raw_value: str) -> list[str]:
+    """Parse comma-separated string of target class/wave names."""
+    if not raw_value:
+        return []
+    return [item.strip().upper() for item in raw_value.split(",") if item.strip()]
+
+
 @dataclass
 class Config:
     TELEGRAM_BOT_TOKEN: str = field(
@@ -95,6 +102,14 @@ class Config:
     MIN_ACCEPTED_PROJECTS: int = field(
         default_factory=lambda: int(os.getenv("MIN_ACCEPTED_PROJECTS", "3"))
     )
+    TARGET_CLASS_NAME: str = field(
+        default_factory=lambda: os.getenv("TARGET_CLASS_NAME", "").strip()
+    )
+
+    @property
+    def target_class_names(self) -> list[str]:
+        return parse_class_names(self.TARGET_CLASS_NAME)
+
     BASE_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
 
     DATA_DIR: Path = field(
