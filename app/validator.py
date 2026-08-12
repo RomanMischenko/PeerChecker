@@ -87,19 +87,9 @@ class PeerValidator:
             logger.info(f"[{login}] GET /v1/participants/{login} -> Wave className: '{display_class}'")
 
         logtime = api_client.get_participant_logtime(login)
-        xp_history = api_client.get_participant_xp_history(login)
 
-        # Calculate total XP for reference
-        total_xp = 0
-        if isinstance(xp_history, list):
-            for entry in xp_history:
-                if isinstance(entry, dict):
-                    raw_val = entry.get("expValue") or entry.get("value") or entry.get("xp") or entry.get("exp")
-                    total_xp += _safe_int(raw_val)
-
-        if total_xp == 0 and isinstance(info, dict):
-            raw_val = info.get("expValue") or info.get("xp") or info.get("totalXp") or info.get("experience")
-            total_xp = _safe_int(raw_val)
+        # Total XP directly from participant info profile (expValue)
+        total_xp = _safe_int(info.get("expValue")) if isinstance(info, dict) else 0
 
         # Check projects: count ACCEPTED projects among target_project_ids via GET /v1/participants/{login}/projects/{projectId}
         logger.info(f"[{login}] Checking {len(self.target_project_ids)} target projects status...")
@@ -151,7 +141,6 @@ class PeerValidator:
             "accepted_count": accepted_count,
             "accepted_projects": accepted_projects,
             "feedback": feedback,
-            "xp_history_count": len(xp_history) if isinstance(xp_history, list) else 0,
         }
 
         result = {

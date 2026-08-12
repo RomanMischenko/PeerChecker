@@ -4,9 +4,8 @@ from app.validator import PeerValidator
 
 def test_validate_peer_verified():
     mock_api = MagicMock()
-    mock_api.get_participant_info.return_value = {"login": "active_peer"}
+    mock_api.get_participant_info.return_value = {"login": "active_peer", "expValue": 1250}
     mock_api.get_participant_logtime.return_value = 14.5
-    mock_api.get_participant_xp_history.return_value = [{"expValue": 1250}]
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": 4.5,
         "averageVerifierInterest": 4.8,

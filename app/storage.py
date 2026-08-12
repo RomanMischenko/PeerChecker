@@ -273,7 +273,13 @@ class Storage:
             )
             rows = cursor.fetchall()
 
-            stats: dict[str, Any] = {"by_tribe": {}, "total": 0, "total_verified": 0, "total_suspicious": 0}
+            stats: dict[str, Any] = {
+                "by_tribe": {},
+                "total": 0,
+                "total_verified": 0,
+                "total_suspicious": 0,
+                "total_skipped_wave": 0,
+            }
             for row in rows:
                 tid = row["tribe_id"]
                 tname = row["tribe_name"]
@@ -281,11 +287,20 @@ class Storage:
                 count = row["count"]
 
                 if tid not in stats["by_tribe"]:
-                    stats["by_tribe"][tid] = {"tribe_name": tname, "verified": 0, "suspicious": 0, "total": 0}
+                    stats["by_tribe"][tid] = {
+                        "tribe_name": tname,
+                        "verified": 0,
+                        "suspicious": 0,
+                        "skipped_wave": 0,
+                        "total": 0,
+                    }
 
                 if status == "VERIFIED":
                     stats["by_tribe"][tid]["verified"] += count
                     stats["total_verified"] += count
+                elif status == "SKIPPED_WAVE":
+                    stats["by_tribe"][tid]["skipped_wave"] += count
+                    stats["total_skipped_wave"] += count
                 else:
                     stats["by_tribe"][tid]["suspicious"] += count
                     stats["total_suspicious"] += count
