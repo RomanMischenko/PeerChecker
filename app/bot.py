@@ -423,8 +423,11 @@ class PeerCheckerBot:
                             val_res["logtime"] = val_res["logtime"]
                             tribe_new_peers.append(val_res)
                             all_new_peers.append(val_res)
+                            # Save peer to DB immediately so validated progress is retained even if stopped early
+                            self.storage.save_peer(val_res)
                             # Update known logins set in memory for this run
                             known_logins.add(login)
+
                         except Exception as e:
                             logger.error(f"Error validating peer {login}: {e}")
 
