@@ -414,8 +414,11 @@ class PeerCheckerBot:
         self.stop_event.set()
 
     def restore_persistent_state(self) -> None:
-        """Restore active states (e.g. background monitoring) from SQLite storage upon startup."""
-        if self.storage.is_monitoring_active():
+        """Restore active state (background monitoring or interrupted check_now scan) from SQLite storage."""
+        monitoring_was_active = self.storage.is_monitoring_active()
+        check_was_in_progress = self.storage.is_check_in_progress()
+
+        if monitoring_was_active:
             logger.info("Restoring active background monitoring state from persistent SQLite storage...")
             self.start_monitoring_loop()
             try:
@@ -424,6 +427,15 @@ class PeerCheckerBot:
                 )
             except Exception as e:
                 logger.warning(f"Could not send startup recovery notification to admins: {e}")
+        elif check_was_in_progress:
+            logger.info("Resuming interrupted scan (/check_now) from persistent SQLite storage...")
+            threading.Thread(target=self.run_check_and_notify, daemon=True).start()
+            try:
+                self._send_to_admins(
+                    "🔄 **Бот перезапущен.** Возобновляю незавершенную проверку пиров (`/check_now`) с места остановки..."
+                )
+            except Exception as e:
+                logger.warning(f"Could not send startup check recovery notification to admins: {e}")
 
     def _monitoring_loop(self) -> None:
         """Background thread target for periodic monitoring."""
@@ -450,6 +462,7 @@ class PeerCheckerBot:
             logger.warning("Check already in progress. Skipping duplicate run.")
             return
 
+        self.storage.set_check_in_progress(True)
         try:
             logger.info("Starting peer scan across target coalitions...")
             with S21ApiClient(
@@ -609,6 +622,7 @@ class PeerCheckerBot:
                 self.storage.log_check_run(total_new, f"Найдено новых: {total_new}")
 
         finally:
+            self.storage.set_check_in_progress(False)
             self.check_lock.release()
 
     def _send_to_admins(self, text: str, files: list[str] | None = None) -> None:

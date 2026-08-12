@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import time
 import tempfile
 from pathlib import Path
 import pytest
@@ -116,20 +117,40 @@ def test_restore_monitoring_on_startup():
 
         # 1. First instance enables monitoring
         st1 = Storage(db_path)
-        app1 = PeerCheckerBot(cfg, st1)
-        app1.start_monitoring_loop()
-        assert app1.monitoring_active is True
-        assert st1.is_monitoring_active() is True
-        app1.stop_monitoring_loop()
+        with patch.object(PeerCheckerBot, "run_check_and_notify"):
+            app1 = PeerCheckerBot(cfg, st1)
+            app1.start_monitoring_loop()
+            assert app1.monitoring_active is True
+            assert st1.is_monitoring_active() is True
+            app1.stop_monitoring_loop()
 
-        # Re-set active to True in storage to simulate crash while monitoring was running
-        st1.set_monitoring_active(True)
+            # Re-set active to True in storage to simulate crash while monitoring was running
+            st1.set_monitoring_active(True)
 
-        # 2. Second instance starts up and should auto-restore monitoring
-        st2 = Storage(db_path)
-        app2 = PeerCheckerBot(cfg, st2)
-        assert app2.monitoring_active is True
-        # Clean up monitoring thread
-        app2.stop_monitoring_loop()
+            # 2. Second instance starts up and should auto-restore monitoring
+            st2 = Storage(db_path)
+            app2 = PeerCheckerBot(cfg, st2)
+            assert app2.monitoring_active is True
+            app2.stop_monitoring_loop()
+
+
+def test_restore_interrupted_check_on_startup():
+    """Ensure that if a check was in progress during crash, initializing PeerCheckerBot resumes the check."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / "test_bot_restore_check.db"
+        cfg = Config()
+        cfg.TELEGRAM_BOT_TOKEN = "123456:dummy_token"
+        cfg.TELEGRAM_ADMIN_IDS = [12345]
+
+        st = Storage(db_path)
+        st.set_check_in_progress(True)
+
+        with patch.object(PeerCheckerBot, "run_check_and_notify") as mock_check:
+            app = PeerCheckerBot(cfg, st)
+            time.sleep(0.1)
+            assert mock_check.called
+            assert app is not None
+
+
 
 

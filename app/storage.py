@@ -103,6 +103,15 @@ class Storage:
         """Save monitoring active status in persistent storage."""
         self.set_state("monitoring_active", "1" if active else "0")
 
+    def is_check_in_progress(self) -> bool:
+        """Check if a peer scan execution was in progress in persistent storage."""
+        val = self.get_state("check_in_progress", "0")
+        return val == "1"
+
+    def set_check_in_progress(self, in_progress: bool) -> None:
+        """Save check execution state in persistent storage."""
+        self.set_state("check_in_progress", "1" if in_progress else "0")
+
     def get_known_logins(self) -> set[str]:
         """Retrieve set of all logins currently present in DB."""
         with self.connection_scope() as conn:

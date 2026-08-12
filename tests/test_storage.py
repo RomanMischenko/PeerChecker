@@ -158,8 +158,9 @@ def test_storage_connection_closed(storage):
 
 
 def test_bot_state_persistence(storage):
-    """Verify storing and retrieving bot state and monitoring_active status."""
+    """Verify storing and retrieving bot state, monitoring_active, and check_in_progress status."""
     assert storage.is_monitoring_active() is False
+    assert storage.is_check_in_progress() is False
 
     storage.set_monitoring_active(True)
     assert storage.is_monitoring_active() is True
@@ -167,7 +168,14 @@ def test_bot_state_persistence(storage):
     storage.set_monitoring_active(False)
     assert storage.is_monitoring_active() is False
 
+    storage.set_check_in_progress(True)
+    assert storage.is_check_in_progress() is True
+
+    storage.set_check_in_progress(False)
+    assert storage.is_check_in_progress() is False
+
     storage.set_state("custom_key", "custom_val")
     assert storage.get_state("custom_key") == "custom_val"
+
 
 
