@@ -53,6 +53,8 @@ def chunk_text(text: str, max_length: int = 4000) -> list[str]:
             if len(line) > max_length:
                 for i in range(0, len(line), max_length):
                     chunks.append(line[i : i + max_length])
+                current_chunk = []
+                current_length = 0
             else:
                 current_chunk.append(line)
                 current_length = len(line)
@@ -182,9 +184,10 @@ class PeerCheckerBot:
                     text += "_Данных по трайбам пока нет_\n"
                 else:
                     for tid, tdata in by_tribe.items():
+                        skipped_str = f" / skipped: {tdata['skipped_wave']}" if tdata.get("skipped_wave", 0) > 0 else ""
                         text += (
                             f"• **{escape_markdown(tdata['tribe_name'])}** (ID {tid}): "
-                            f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']})\n"
+                            f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']}{skipped_str})\n"
                         )
 
                 self.bot.reply_to(message, text, parse_mode="Markdown")
@@ -256,7 +259,7 @@ class PeerCheckerBot:
 
                 for arg in parts:
                     arg_upper = arg.upper()
-                    if arg_upper in ("VERIFIED", "SUSPICIOUS"):
+                    if arg_upper in ("VERIFIED", "SUSPICIOUS", "SKIPPED_WAVE"):
                         filter_status = arg_upper
                     elif arg_upper != "ALL":
                         filter_tribe = arg
@@ -294,11 +297,16 @@ class PeerCheckerBot:
 
                     v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
                     s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
+                    w_count = sum(1 for p in peers if p["status"] == "SKIPPED_WAVE")
+
+                    status_counts = [f"Verified: **{v_count}**", f"Suspicious: **{s_count}**"]
+                    if w_count > 0 or filter_status == "SKIPPED_WAVE":
+                        status_counts.append(f"Skipped Wave: **{w_count}**")
 
                     caption = (
                         f"**Список пиров из БД{desc_str}**\n\n"
                         f"• Всего найдено: **{len(peers)}** чел.\n"
-                        f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
+                        f"• {' | '.join(status_counts)}\n"
                         f"Подробный список прикреплен в файле."
                     )
 
@@ -380,27 +388,48 @@ class PeerCheckerBot:
         def handle_status_callback(call: types.CallbackQuery) -> None:
             user_id = call.from_user.id
             if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
-                self.bot.answer_callback_query(call.id, "⛔ Нет прав доступа.", show_alert=True)
+                try:
+                    self.bot.answer_callback_query(call.id, "⛔ Нет прав доступа.", show_alert=True)
+                except Exception:
+                    pass
                 return
 
             # Format: set_status:<login>:<status>
             parts = call.data.split(":")
             if len(parts) == 3:
                 login, status = parts[1], parts[2]
-                self.storage.update_peer_status(login, status, is_manual=True)
-                self.bot.answer_callback_query(call.id, f"Статус пира {login} изменен на {status}")
-
-                peer = self.storage.get_peer(login)
-                if peer:
-                    text, markup = self._build_peer_card_content(peer)
+                try:
+                    updated = self.storage.update_peer_status(login, status, is_manual=True)
+                    if updated:
+                        try:
+                            self.bot.answer_callback_query(call.id, f"Статус пира {login} изменен на {status}")
+                        except Exception:
+                            pass
+                        peer = self.storage.get_peer(login)
+                        if peer:
+                            text, markup = self._build_peer_card_content(peer)
+                            try:
+                                self.bot.edit_message_text(
+                                    text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown"
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            self.bot.answer_callback_query(call.id, f"⚠️ Пир '{login}' не найден в БД.", show_alert=True)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.error(f"Error in handle_status_callback: {e}", exc_info=True)
                     try:
-                        self.bot.edit_message_text(
-                            text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown"
-                        )
+                        self.bot.answer_callback_query(call.id, f"⚠️ Ошибка смены статуса: {e}", show_alert=True)
                     except Exception:
                         pass
             else:
-                self.bot.answer_callback_query(call.id, "⚠️ Ошибка формата данных.")
+                try:
+                    self.bot.answer_callback_query(call.id, "⚠️ Ошибка формата данных.")
+                except Exception:
+                    pass
 
     def _build_peer_card_content(self, peer: dict[str, Any]) -> tuple[str, types.InlineKeyboardMarkup]:
         """Format peer card text and inline buttons."""
@@ -569,7 +598,7 @@ class PeerCheckerBot:
                                     all_new_peers.append(val_res)
 
                             except Exception as e:
-                                logger.error(f"Error validating peer {login}: {e}")
+                                logger.error(f"Error validating peer {login}: {e}", exc_info=True)
 
                         if tribe_new_peers:
                             new_peers_by_tribe[tribe_id] = tribe_new_peers

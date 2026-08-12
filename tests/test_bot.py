@@ -181,6 +181,55 @@ def test_handle_export_skipped_wave_only(bot_app):
     assert any("нет проверенных" in str(call) for call in calls)
 
 
+def test_handle_status_callback_peer_not_found(bot_app):
+    bot_app.bot.answer_callback_query = MagicMock()
+    call = MagicMock()
+    call.from_user.id = 12345
+    call.data = "set_status:non_existent_peer:VERIFIED"
+    call.id = "call_123"
+
+    handler = [h for h in bot_app.bot.callback_query_handlers if h["filters"]["func"](call)][0]
+    handler["function"](call)
+
+    assert bot_app.bot.answer_callback_query.called
+    args, kwargs = bot_app.bot.answer_callback_query.call_args
+    assert "не найден" in args[1]
+
+
+def test_handle_peers_skipped_wave(bot_app):
+    bot_app.storage.save_peer({
+        "login": "wave_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SKIPPED_WAVE",
+        "xp": 0,
+        "logtime": 0.0,
+    })
+
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/peers SKIPPED_WAVE"
+
+    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"]["commands"]][0]
+    bot_app.bot.send_document = MagicMock()
+    handler["function"](msg)
+
+    assert bot_app.bot.send_document.called
+    args, kwargs = bot_app.bot.send_document.call_args
+    assert "Skipped Wave" in kwargs.get("caption", "")
+
+
+def test_chunk_text_long_line_resets_chunk():
+    from app.bot import chunk_text
+    long_line = "A" * 150
+    normal_line = "B" * 20
+    text = f"{long_line}\n{normal_line}"
+    chunks = chunk_text(text, max_length=100)
+    assert len(chunks) >= 3
+    assert all(len(c) <= 100 for c in chunks)
+
+
+
 
 
 

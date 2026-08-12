@@ -103,16 +103,12 @@ class S21ApiClient:
             try:
                 resp = self.session.request(method, url, headers=headers, params=params, timeout=20)
 
-                # Handle 401 Unauthorized -> Refresh token & retry
+                # Handle 401 Unauthorized -> Force token refresh on next retry
                 if resp.status_code == 401:
                     logger.warning("Token expired or unauthorized (401). Refreshing token...")
-                    self.authenticate()
+                    self.access_token = None
                     if attempt < self.max_retries:
                         continue
-                    # Extra retry attempt with refreshed token
-                    token = self.access_token
-                    headers["Authorization"] = f"Bearer {token}"
-                    resp = self.session.request(method, url, headers=headers, params=params, timeout=20)
 
                 # Handle 429 Too Many Requests or 5xx Server Errors -> Exponential backoff retry
                 if resp.status_code in (429, 500, 502, 503, 504):
