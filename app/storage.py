@@ -17,13 +17,23 @@ class Storage:
 
     @contextmanager
     def connection_scope(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+        import time
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=30.0)
+                conn.row_factory = sqlite3.Row
+                try:
+                    with conn:
+                        yield conn
+                    break
+                finally:
+                    conn.close()
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries:
+                    time.sleep(0.2 * attempt)
+                    continue
+                raise
 
     def init_db(self) -> None:
         """Initialize database schema if tables do not exist."""
