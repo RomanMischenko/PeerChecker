@@ -139,36 +139,56 @@ class Storage:
             cursor.execute("SELECT 1 FROM peers WHERE login = ?", (login,))
             return cursor.fetchone() is not None
 
-    def save_peer(self, peer: dict[str, Any]) -> None:
+    def save_peer(self, peer: dict[str, Any], force: bool = False) -> None:
         """Insert a single peer record."""
-        self.save_peers_batch([peer])
+        self.save_peers_batch([peer], force=force)
 
-    def save_peers_batch(self, peers: list[dict[str, Any]]) -> None:
-        """Insert a batch of peer records."""
+    def save_peers_batch(self, peers: list[dict[str, Any]], force: bool = False) -> None:
+        """Insert a batch of peer records. Set force=True to override previous manual status."""
         if not peers:
             return
 
         now = datetime.now().isoformat()
+        sql = (
+            """
+            INSERT INTO peers (
+                login, tribe_id, tribe_name, status, is_manual,
+                first_seen, updated_at, xp, logtime, suspicion_reason, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(login) DO UPDATE SET
+                tribe_id=excluded.tribe_id,
+                tribe_name=excluded.tribe_name,
+                status=excluded.status,
+                is_manual=excluded.is_manual,
+                updated_at=excluded.updated_at,
+                xp=excluded.xp,
+                logtime=excluded.logtime,
+                suspicion_reason=excluded.suspicion_reason,
+                details_json=excluded.details_json
+            """
+            if force
+            else """
+            INSERT INTO peers (
+                login, tribe_id, tribe_name, status, is_manual,
+                first_seen, updated_at, xp, logtime, suspicion_reason, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(login) DO UPDATE SET
+                tribe_id=excluded.tribe_id,
+                tribe_name=excluded.tribe_name,
+                status=CASE WHEN is_manual = 1 THEN status ELSE excluded.status END,
+                is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END,
+                updated_at=excluded.updated_at,
+                xp=excluded.xp,
+                logtime=excluded.logtime,
+                suspicion_reason=CASE WHEN is_manual = 1 THEN suspicion_reason ELSE excluded.suspicion_reason END,
+                details_json=excluded.details_json
+            """
+        )
         with self.connection_scope() as conn:
             cursor = conn.cursor()
             for p in peers:
                 cursor.execute(
-                    """
-                    INSERT INTO peers (
-                        login, tribe_id, tribe_name, status, is_manual,
-                        first_seen, updated_at, xp, logtime, suspicion_reason, details_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(login) DO UPDATE SET
-                        tribe_id=excluded.tribe_id,
-                        tribe_name=excluded.tribe_name,
-                        status=CASE WHEN is_manual = 1 THEN status ELSE excluded.status END,
-                        is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END,
-                        updated_at=excluded.updated_at,
-                        xp=excluded.xp,
-                        logtime=excluded.logtime,
-                        suspicion_reason=CASE WHEN is_manual = 1 THEN suspicion_reason ELSE excluded.suspicion_reason END,
-                        details_json=excluded.details_json
-                    """,
+                    sql,
                     (
                         p["login"],
                         p["tribe_id"],

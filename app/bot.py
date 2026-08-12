@@ -116,6 +116,7 @@ class PeerCheckerBot:
                 "/peers — Список пиров из БД (/peers verified, /peers 604)\n"
                 "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
                 "/peer <login> — Карточка пира с возможностью смены статуса\n"
+                "/recheck <login> — Ручная перепроверка пира по API с обновлением статуса в БД\n"
             )
             self.bot.reply_to(message, text)
 
@@ -243,6 +244,49 @@ class PeerCheckerBot:
                 self._send_peer_card(message.chat.id, peer)
             except Exception as e:
                 logger.error(f"Error handling /peer: {e}", exc_info=True)
+
+        @self.bot.message_handler(commands=["recheck", "recheck_peer", "recheckpeer"])
+        @admin_only
+        def handle_recheck(message: types.Message) -> None:
+            try:
+                parts = message.text.strip().split()
+                if len(parts) < 2:
+                    self.bot.reply_to(message, "Укажите логин пира. Пример: `/recheck ivanov-ivan`", parse_mode="Markdown")
+                    return
+
+                login = parts[1].strip()
+                self.bot.reply_to(
+                    message,
+                    f"🔄 Перепроверка пира `{escape_code_block(login)}` через API S21...",
+                    parse_mode="Markdown",
+                )
+
+                existing_peer = self.storage.get_peer(login)
+                tribe_id = existing_peer["tribe_id"] if existing_peer else 0
+                tribe_name = existing_peer["tribe_name"] if existing_peer else "Неизвестно"
+
+                with S21ApiClient(self.config.S21_LOGIN, self.config.S21_PASSWORD) as api_client:
+                    val_res = self.validator.validate_peer(api_client, login)
+                    val_res["tribe_id"] = tribe_id
+                    val_res["tribe_name"] = tribe_name
+                    val_res["xp"] = val_res["total_xp"]
+                    val_res["logtime"] = val_res["logtime"]
+                    val_res["is_manual"] = 0
+
+                    self.storage.save_peer(val_res, force=True)
+
+                updated_peer = self.storage.get_peer(login)
+                if updated_peer:
+                    self._send_peer_card(message.chat.id, updated_peer)
+                else:
+                    self.bot.reply_to(
+                        message,
+                        f"❌ Ошибка сохранения результатов для `{escape_code_block(login)}`.",
+                        parse_mode="Markdown",
+                    )
+            except Exception as e:
+                logger.error(f"Error handling /recheck for peer {message.text}: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при перепроверке пира: {e}")
 
         @self.bot.message_handler(commands=["peers", "list"])
         @admin_only

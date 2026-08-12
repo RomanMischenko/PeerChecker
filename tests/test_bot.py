@@ -345,6 +345,47 @@ def test_run_check_and_notify_expelled_and_restored(bot_app):
         assert bot_app.storage.get_peer("peer_b")["status"] == "VERIFIED"
 
 
+def test_handle_recheck_authorized(bot_app):
+    bot_app.storage.save_peer({
+        "login": "recheck_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SUSPICIOUS",
+        "xp": 0,
+        "logtime": 0.0,
+    })
+    bot_app.storage.update_peer_status("recheck_peer", "VERIFIED", is_manual=True)
+    assert bot_app.storage.get_peer("recheck_peer")["is_manual"] == 1
+
+    with patch("app.bot.S21ApiClient") as mock_api_cls:
+        mock_api = MagicMock()
+        mock_api_cls.return_value.__enter__.return_value = mock_api
+
+        bot_app.validator.validate_peer = MagicMock(return_value={
+            "login": "recheck_peer",
+            "status": "SUSPICIOUS",
+            "is_skipped": False,
+            "total_xp": 50,
+            "logtime": 2.0,
+            "suspicion_reason_text": "Мало сданных проектов",
+            "details": {},
+        })
+
+        msg = MagicMock()
+        msg.from_user.id = 12345
+        msg.text = "/recheck recheck_peer"
+
+        handler = [h for h in bot_app.bot.message_handlers if "recheck" in h["filters"]["commands"]][0]
+        bot_app.bot.send_message = MagicMock()
+        handler["function"](msg)
+
+        peer_after = bot_app.storage.get_peer("recheck_peer")
+        assert peer_after["status"] == "SUSPICIOUS"
+        assert peer_after["is_manual"] == 0
+        assert peer_after["xp"] == 50
+
+
+
 
 
 

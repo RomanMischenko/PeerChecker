@@ -105,6 +105,38 @@ def test_manual_status_update(storage):
     assert peer_after_resave["status"] == "VERIFIED"  # Kept manual VERIFIED status!
 
 
+def test_save_peer_force_overrides_manual(storage):
+    peer_data = {
+        "login": "force_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SUSPICIOUS",
+        "xp": 0,
+        "logtime": 0.0,
+    }
+    storage.save_peer(peer_data)
+    storage.update_peer_status("force_peer", "VERIFIED", is_manual=True)
+    assert storage.get_peer("force_peer")["is_manual"] == 1
+
+    # Save with force=True resets is_manual to 0 and updates status
+    rechecked_data = {
+        "login": "force_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SUSPICIOUS",
+        "is_manual": 0,
+        "xp": 100,
+        "logtime": 5.0,
+    }
+    storage.save_peer(rechecked_data, force=True)
+
+    rechecked_peer = storage.get_peer("force_peer")
+    assert rechecked_peer["status"] == "SUSPICIOUS"
+    assert rechecked_peer["is_manual"] == 0
+    assert rechecked_peer["xp"] == 100
+
+
+
 def test_stats_and_check_logs(storage):
     peers = [
         {"login": "p1", "tribe_id": 604, "tribe_name": "Northern", "status": "VERIFIED", "xp": 10, "logtime": 1.0},

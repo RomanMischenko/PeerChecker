@@ -116,6 +116,7 @@ pytest tests/ -v
 - `/peers [verified|suspicious|skipped_peers|expelled|all|tribe]` — Получение текущего списка пиров из БД (с фильтрацией).
 - `/export` — Экспорт текущих пиров в `.txt` файлы по трайбам (verified, suspicious, expelled).
 - `/peer <login>` — Просмотр карточки пира с кнопками быстрой смены статуса (`[ VERIFIED ]` / `[ SUSPICIOUS ]` / `[ EXPELLED ]`).
+- `/recheck <login>` — Ручная перепроверка пира через API S21 с обновлением данных и статуса в БД.
 
 ---
 
