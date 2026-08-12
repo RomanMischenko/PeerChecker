@@ -12,7 +12,7 @@ import telebot
 from telebot import types
 
 from app.config import Config
-from app.s21_api import S21ApiClient, S21ApiError
+from app.s21_api import S21ApiClient
 from app.storage import Storage
 from app.validator import PeerValidator
 
@@ -73,10 +73,7 @@ class PeerCheckerBot:
         self.storage = storage
         self.bot = telebot.TeleBot(self.config.TELEGRAM_BOT_TOKEN)
         self.validator = PeerValidator(
-            target_project_ids=self.config.TARGET_PROJECT_IDS,
             min_accepted_projects=self.config.MIN_ACCEPTED_PROJECTS,
-            min_logtime=self.config.MIN_LOGTIME,
-            target_class_names=self.config.target_class_names,
             wave_projects=self.config.wave_projects,
         )
 

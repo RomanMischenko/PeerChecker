@@ -34,7 +34,6 @@ def test_validate_peer_suspicious():
     mock_api = MagicMock()
     mock_api.get_participant_info.return_value = {"login": "test_acc"}
     mock_api.get_participant_logtime.return_value = 0.0
-    mock_api.get_participant_xp_history.return_value = []
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": 0,
         "averageVerifierInterest": 0,
@@ -76,7 +75,6 @@ def test_validate_peer_null_feedback():
     mock_api = MagicMock()
     mock_api.get_participant_info.return_value = {"login": "null_fb_peer"}
     mock_api.get_participant_logtime.return_value = 5.0
-    mock_api.get_participant_xp_history.return_value = None
     mock_api.get_participant_feedback.return_value = {
         "averageVerifierPunctuality": None,
         "averageVerifierInterest": None,

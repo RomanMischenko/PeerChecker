@@ -44,27 +44,6 @@ def parse_coalitions(raw_value: str) -> dict[int, str]:
     return coalitions if coalitions else default_coalitions
 
 
-def parse_project_ids(raw_value: str) -> list[int]:
-    """Parse comma-separated string of project IDs."""
-    default_ids = [73187, 73188, 73189, 73328, 73190, 73191, 73192, 73193, 73194, 73195, 73196]
-    if not raw_value:
-        return default_ids
-
-    result = []
-    for item in raw_value.split(","):
-        cleaned = item.strip()
-        if cleaned.isdigit():
-            result.append(int(cleaned))
-    return result if result else default_ids
-
-
-def parse_class_names(raw_value: str) -> list[str]:
-    """Parse comma-separated string of target class/wave names."""
-    if not raw_value:
-        return []
-    return [item.strip().upper() for item in raw_value.split(",") if item.strip()]
-
-
 def parse_wave_projects_from_env(env_dict: dict[str, str] | None = None) -> dict[str, list[int]]:
     """
     Scan environment for TARGET_PROJECT_IDS_<WAVE_NAME> variables
@@ -98,16 +77,6 @@ def _get_env_int(key: str, default: int) -> int:
         return default
 
 
-def _get_env_float(key: str, default: float) -> float:
-    raw = os.getenv(key, "").strip()
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
 @dataclass
 class Config:
     TELEGRAM_BOT_TOKEN: str = field(
@@ -133,15 +102,6 @@ class Config:
     CHECK_INTERVAL_MINUTES: int = field(
         default_factory=lambda: _get_env_int("CHECK_INTERVAL_MINUTES", 60)
     )
-    MIN_XP: int = field(
-        default_factory=lambda: _get_env_int("MIN_XP", 0)
-    )
-    MIN_LOGTIME: float = field(
-        default_factory=lambda: _get_env_float("MIN_LOGTIME", 0.0)
-    )
-    TARGET_PROJECT_IDS: list[int] = field(
-        default_factory=lambda: parse_project_ids(os.getenv("TARGET_PROJECT_IDS", ""))
-    )
     MIN_ACCEPTED_PROJECTS: int = field(
         default_factory=lambda: _get_env_int("MIN_ACCEPTED_PROJECTS", 3)
     )
@@ -151,10 +111,6 @@ class Config:
     TZ: str = field(
         default_factory=lambda: os.getenv("TZ", "Europe/Moscow").strip()
     )
-
-    @property
-    def target_class_names(self) -> list[str]:
-        return parse_class_names(self.TARGET_CLASS_NAME)
 
     @property
     def wave_projects(self) -> dict[str, list[int]]:

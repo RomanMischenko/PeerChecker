@@ -34,15 +34,10 @@ class PeerValidator:
         target_class_names: list[str] | None = None,
         wave_projects: dict[str, list[int]] | None = None,
     ):
-        self.target_project_ids = (
-            target_project_ids
-            if target_project_ids is not None
-            else [73187, 73188, 73189, 73328, 73190, 73191, 73192, 73193, 73194, 73195, 73196]
-        )
         self.min_accepted_projects = min_accepted_projects
-        self.min_logtime = min_logtime
-        self.target_class_names = [tc.upper() for tc in target_class_names] if target_class_names else []
         self.wave_projects = {k.upper(): v for k, v in wave_projects.items()} if wave_projects else {}
+        self.target_class_names = [tc.upper() for tc in target_class_names] if target_class_names else []
+        self.target_project_ids = target_project_ids if target_project_ids is not None else []
 
     def validate_peer(
         self,

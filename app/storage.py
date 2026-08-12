@@ -252,14 +252,6 @@ class Storage:
                 return d
             return None
 
-    def get_peers_by_tribe(self, tribe_id: int) -> list[dict[str, Any]]:
-        """Retrieve all peers for a given tribe."""
-        with self.connection_scope() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM peers WHERE tribe_id = ? ORDER BY login ASC", (tribe_id,))
-            rows = cursor.fetchall()
-            return [dict(r) for r in rows]
-
     def get_all_peers(self) -> list[dict[str, Any]]:
         """Retrieve all peers in the database."""
         with self.connection_scope() as conn:

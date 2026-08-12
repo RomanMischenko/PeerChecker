@@ -204,35 +204,6 @@ class S21ApiClient:
             logger.warning(f"Could not fetch logtime for {login}: {e}")
             return 0.0
 
-    def get_participant_xp_history(self, login: str) -> list[dict[str, Any]]:
-        """Fetch XP accrual history. Endpoint: /v1/participants/{login}/experience-history"""
-        try:
-            data = self._request("GET", f"/v1/participants/{login}/experience-history", params={"limit": 1000, "offset": 0})
-            if isinstance(data, list):
-                return data
-            if isinstance(data, dict):
-                return (
-                    data.get("expHistory")
-                    or data.get("items")
-                    or data.get("history")
-                    or data.get("xpHistory")
-                    or []
-                )
-            return []
-        except S21ApiError as e:
-            logger.warning(f"Could not fetch XP history for {login}: {e}")
-            return []
-
-
-    def get_participant_points(self, login: str) -> dict[str, Any]:
-        """Fetch participant points and evaluation data. Endpoint: /v1/participants/{login}/points"""
-        try:
-            data = self._request("GET", f"/v1/participants/{login}/points")
-            return data if isinstance(data, dict) else {}
-        except S21ApiError as e:
-            logger.warning(f"Could not fetch points for {login}: {e}")
-            return {}
-
     def get_participant_project(self, login: str, project_id: int) -> dict[str, Any]:
         """Fetch participant project status by ID. Endpoint: /v1/participants/{login}/projects/{projectId}"""
         try:
