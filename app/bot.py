@@ -26,6 +26,38 @@ def escape_markdown(text: str) -> str:
     return re.sub(r"([_*`\[])", r"\\\1", text)
 
 
+def chunk_text(text: str, max_length: int = 4000) -> list[str]:
+    """Split text into chunks of maximum max_length without breaking markdown lines if possible."""
+    if not text:
+        return []
+    if len(text) <= max_length:
+        return [text]
+    chunks = []
+    lines = text.split("\n")
+    current_chunk: list[str] = []
+    current_length = 0
+
+    for line in lines:
+        if current_length + len(line) + 1 > max_length:
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_length = 0
+            if len(line) > max_length:
+                for i in range(0, len(line), max_length):
+                    chunks.append(line[i : i + max_length])
+            else:
+                current_chunk.append(line)
+                current_length = len(line)
+        else:
+            current_chunk.append(line)
+            current_length += len(line) + 1
+
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
+    return chunks
+
+
 class PeerCheckerBot:
     def __init__(self, config: Config, storage: Storage):
         self.config = config
@@ -83,6 +115,10 @@ class PeerCheckerBot:
             if self.monitoring_active:
                 self.bot.reply_to(message, "Фоновый мониторинг уже запущен.")
                 return
+
+            if self.monitoring_thread and self.monitoring_thread.is_alive():
+                self.stop_event.set()
+                self.monitoring_thread.join(timeout=3.0)
 
             self.monitoring_active = True
             self.stop_event.clear()
@@ -343,14 +379,17 @@ class PeerCheckerBot:
         status_emoji = "✅ VERIFIED" if status == "VERIFIED" else "⚠️ SUSPICIOUS"
         manual_flag = " (изменено вручную)" if peer.get("is_manual") else ""
 
+        first_seen_val = peer.get("first_seen") or "Неизвестно"
+        suspicion_reason_val = peer.get("suspicion_reason") or "Нет"
+
         text = (
             f"👤 **Карточка пира `{escape_markdown(login)}`**\n\n"
             f"• **Трайб:** {escape_markdown(peer['tribe_name'])} (ID {peer['tribe_id']})\n"
             f"• **Статус:** {status_emoji}{manual_flag}\n"
             f"• **Суммарный XP:** {peer.get('xp', 0)}\n"
             f"• **Логтайм:** {peer.get('logtime', 0.0):.2f} ч/нед\n"
-            f"• **Причина / Примечание:** `{escape_markdown(peer.get('suspicion_reason') or 'Нет')}`\n"
-            f"• **Первое обнаружение:** `{escape_markdown(peer.get('first_seen'))}`\n"
+            f"• **Причина / Примечание:** `{escape_markdown(suspicion_reason_val)}`\n"
+            f"• **Первое обнаружение:** `{escape_markdown(first_seen_val)}`\n"
         )
 
         markup = types.InlineKeyboardMarkup()
@@ -366,7 +405,8 @@ class PeerCheckerBot:
     def _monitoring_loop(self) -> None:
         """Background thread target for periodic monitoring."""
         logger.info("Monitoring loop started.")
-        while not self.stop_event.is_set():
+        current_t = threading.current_thread()
+        while not self.stop_event.is_set() and self.monitoring_thread == current_t:
             try:
                 self.run_check_and_notify(is_background=True)
             except Exception as e:
@@ -375,7 +415,7 @@ class PeerCheckerBot:
             # Sleep in small steps to allow fast cancellation
             interval_sec = self.config.CHECK_INTERVAL_MINUTES * 60
             for _ in range(int(interval_sec)):
-                if self.stop_event.is_set():
+                if self.stop_event.is_set() or self.monitoring_thread != current_t:
                     break
                 time.sleep(1)
 
@@ -389,161 +429,161 @@ class PeerCheckerBot:
 
         try:
             logger.info("Starting peer scan across target coalitions...")
-            api_client = S21ApiClient(
+            with S21ApiClient(
                 login=self.config.S21_LOGIN,
                 password=self.config.S21_PASSWORD,
-            )
+            ) as api_client:
 
-            known_logins = self.storage.get_known_logins()
-            logger.info(f"Loaded {len(known_logins)} existing known logins from database.")
+                known_logins = self.storage.get_known_logins()
+                logger.info(f"Loaded {len(known_logins)} existing known logins from database.")
 
-            new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
-            all_new_peers: list[dict[str, Any]] = []
-            skipped_wave_count = 0
-            total_unprocessed_count = 0
+                new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
+                all_new_peers: list[dict[str, Any]] = []
+                skipped_wave_count = 0
+                total_unprocessed_count = 0
 
-            for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
-                if is_background and self.stop_event.is_set():
-                    logger.info("Scan aborted by stop signal.")
-                    return
-
-                try:
-                    participant_logins = api_client.get_coalition_participants(
-                        tribe_id, stop_event=self.stop_event if is_background else None
-                    )
+                for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
                     if is_background and self.stop_event.is_set():
                         logger.info("Scan aborted by stop signal.")
                         return
 
-                    logger.info(f"Fetched {len(participant_logins)} total logins for tribe {tribe_name} ({tribe_id}).")
-
-                    # Deduplication filter: only check logins not yet in SQLite DB!
-                    unprocessed_logins = [l for l in participant_logins if l not in known_logins]
-                    total_unprocessed_count += len(unprocessed_logins)
-                    logger.info(f"Found {len(unprocessed_logins)} new (unprocessed) logins for tribe {tribe_name}.")
-
-                    tribe_new_peers = []
-                    for idx, login in enumerate(unprocessed_logins):
+                    try:
+                        participant_logins = api_client.get_coalition_participants(
+                            tribe_id, stop_event=self.stop_event if is_background else None
+                        )
                         if is_background and self.stop_event.is_set():
-                            logger.info("Scan aborted by stop signal during peer validation.")
+                            logger.info("Scan aborted by stop signal.")
                             return
 
-                        try:
-                            val_res = self.validator.validate_peer(
-                                api_client, login, current_index=idx + 1, total_count=len(unprocessed_logins)
-                            )
+                        logger.info(f"Fetched {len(participant_logins)} total logins for tribe {tribe_name} ({tribe_id}).")
 
-                            val_res["tribe_id"] = tribe_id
-                            val_res["tribe_name"] = tribe_name
-                            val_res["xp"] = val_res["total_xp"]
-                            val_res["logtime"] = val_res["logtime"]
+                        # Deduplication filter: only check logins not yet in SQLite DB!
+                        unprocessed_logins = [l for l in participant_logins if l not in known_logins]
+                        total_unprocessed_count += len(unprocessed_logins)
+                        logger.info(f"Found {len(unprocessed_logins)} new (unprocessed) logins for tribe {tribe_name}.")
 
-                            # Save peer to DB immediately so validated progress is retained
-                            self.storage.save_peer(val_res)
-                            known_logins.add(login)
+                        tribe_new_peers = []
+                        for idx, login in enumerate(unprocessed_logins):
+                            if is_background and self.stop_event.is_set():
+                                logger.info("Scan aborted by stop signal during peer validation.")
+                                return
 
-                            # Only add to notifications if not skipped by wave filter
-                            if val_res.get("is_skipped"):
-                                skipped_wave_count += 1
-                            else:
-                                tribe_new_peers.append(val_res)
-                                all_new_peers.append(val_res)
+                            try:
+                                val_res = self.validator.validate_peer(
+                                    api_client, login, current_index=idx + 1, total_count=len(unprocessed_logins)
+                                )
 
-                        except Exception as e:
-                            logger.error(f"Error validating peer {login}: {e}")
+                                val_res["tribe_id"] = tribe_id
+                                val_res["tribe_name"] = tribe_name
+                                val_res["xp"] = val_res["total_xp"]
+                                val_res["logtime"] = val_res["logtime"]
 
-                    if tribe_new_peers:
-                        new_peers_by_tribe[tribe_id] = tribe_new_peers
+                                # Save peer to DB immediately so validated progress is retained
+                                self.storage.save_peer(val_res)
+                                known_logins.add(login)
 
-                except Exception as e:
-                    logger.error(f"Error checking coalition {tribe_id} ({tribe_name}): {e}")
+                                # Only add to notifications if not skipped by wave filter
+                                if val_res.get("is_skipped"):
+                                    skipped_wave_count += 1
+                                else:
+                                    tribe_new_peers.append(val_res)
+                                    all_new_peers.append(val_res)
 
-            now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
-            target_wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
+                            except Exception as e:
+                                logger.error(f"Error validating peer {login}: {e}")
 
-            # Notification Logic
-            if not all_new_peers:
-                if total_unprocessed_count == 0:
-                    report_text = (
-                        f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                        f"• **Результат:** Новых логинов на платформе не обнаружено.\n"
-                        f"• **Последняя проверка:** `{now_str}`"
-                    )
-                    log_msg = "Новых логинов на платформе не обнаружено"
-                else:
-                    report_text = (
-                        f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                        f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
-                        f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
-                        f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
-                        f"• **Последняя проверка:** `{now_str}`"
-                    )
-                    log_msg = f"Проверено {total_unprocessed_count} новых пиров, пиров целевой волны ({target_wave_str}) не обнаружено"
+                        if tribe_new_peers:
+                            new_peers_by_tribe[tribe_id] = tribe_new_peers
 
-                self._send_to_admins(report_text)
-                self.storage.log_check_run(0, log_msg)
-                return
+                    except Exception as e:
+                        logger.error(f"Error checking coalition {tribe_id} ({tribe_name}): {e}")
 
-            # Summary for newly found target wave peers
-            total_new = len(all_new_peers)
-            summary_text = (
-                f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
-                f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
-                f"• **Время проверки:** `{now_str}`\n"
-            )
-            if skipped_wave_count > 0:
-                summary_text += f"• **Пропущено из других волн:** {skipped_wave_count} чел.\n"
-            summary_text += "\n📊 **Распределение по трайбам:**\n"
+                now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+                target_wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
 
-            for tid, tname in self.config.TARGET_COALITIONS.items():
-                tpeers = new_peers_by_tribe.get(tid, [])
-                v_count = sum(1 for p in tpeers if p["status"] == "VERIFIED")
-                s_count = sum(1 for p in tpeers if p["status"] == "SUSPICIOUS")
-                summary_text += f"• **{escape_markdown(tname)}:** {len(tpeers)} новых (✅ {v_count} verified / ⚠️ {s_count} suspicious)\n"
+                # Notification Logic
+                if not all_new_peers:
+                    if total_unprocessed_count == 0:
+                        report_text = (
+                            f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
+                            f"• **Результат:** Новых логинов на платформе не обнаружено.\n"
+                            f"• **Последняя проверка:** `{now_str}`"
+                        )
+                        log_msg = "Новых логинов на платформе не обнаружено"
+                    else:
+                        report_text = (
+                            f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
+                            f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
+                            f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
+                            f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
+                            f"• **Последняя проверка:** `{now_str}`"
+                        )
+                        log_msg = f"Проверено {total_unprocessed_count} новых пиров, пиров целевой волны ({target_wave_str}) не обнаружено"
 
-            # Generate report files per tribe
-            files_to_send = []
-            temp_dir = tempfile.mkdtemp()
+                    self._send_to_admins(report_text)
+                    self.storage.log_check_run(0, log_msg)
+                    return
 
-            try:
+                # Summary for newly found target wave peers
+                total_new = len(all_new_peers)
+                summary_text = (
+                    f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
+                    f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
+                    f"• **Время проверки:** `{now_str}`\n"
+                )
+                if skipped_wave_count > 0:
+                    summary_text += f"• **Пропущено из других волн:** {skipped_wave_count} чел.\n"
+                summary_text += "\n📊 **Распределение по трайбам:**\n"
+
                 for tid, tname in self.config.TARGET_COALITIONS.items():
                     tpeers = new_peers_by_tribe.get(tid, [])
-                    if not tpeers:
-                        continue
+                    v_count = sum(1 for p in tpeers if p["status"] == "VERIFIED")
+                    s_count = sum(1 for p in tpeers if p["status"] == "SUSPICIOUS")
+                    summary_text += f"• **{escape_markdown(tname)}:** {len(tpeers)} новых (✅ {v_count} verified / ⚠️ {s_count} suspicious)\n"
 
-                    verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
-                    suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                # Generate report files per tribe
+                files_to_send = []
+                temp_dir = tempfile.mkdtemp()
 
-                    # Verified file
-                    if verified_peers:
-                        v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
-                        with open(v_path, "w", encoding="utf-8") as f:
-                            f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
-                            f.write(f"Дата проверки: {now_str}\n\n")
-                            for p in verified_peers:
-                                f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
-                        files_to_send.append(v_path)
+                try:
+                    for tid, tname in self.config.TARGET_COALITIONS.items():
+                        tpeers = new_peers_by_tribe.get(tid, [])
+                        if not tpeers:
+                            continue
 
-                    # Suspicious file
-                    if suspicious_peers:
-                        s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
-                        with open(s_path, "w", encoding="utf-8") as f:
-                            f.write(f"=== Список подозрительных пиров (SUSPICIOUS) — Трайб {tname} ===\n")
-                            f.write(f"Дата проверки: {now_str}\n\n")
-                            for p in suspicious_peers:
-                                f.write(
-                                    f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                                    f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
-                                )
-                        files_to_send.append(s_path)
+                        verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
+                        suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
 
-                # Send summary + files to all admins
-                self._send_to_admins(summary_text, files=files_to_send)
+                        # Verified file
+                        if verified_peers:
+                            v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
+                            with open(v_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
+                                f.write(f"Дата проверки: {now_str}\n\n")
+                                for p in verified_peers:
+                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                            files_to_send.append(v_path)
 
-            finally:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                        # Suspicious file
+                        if suspicious_peers:
+                            s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
+                            with open(s_path, "w", encoding="utf-8") as f:
+                                f.write(f"=== Список подозрительных пиров (SUSPICIOUS) — Трайб {tname} ===\n")
+                                f.write(f"Дата проверки: {now_str}\n\n")
+                                for p in suspicious_peers:
+                                    f.write(
+                                        f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                        f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
+                                    )
+                            files_to_send.append(s_path)
 
-            self.storage.log_check_run(total_new, f"Найдено новых: {total_new}")
+                    # Send summary + files to all admins
+                    self._send_to_admins(summary_text, files=files_to_send)
+
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+                self.storage.log_check_run(total_new, f"Найдено новых: {total_new}")
 
         finally:
             self.check_lock.release()
@@ -554,9 +594,11 @@ class PeerCheckerBot:
             logger.warning("No TELEGRAM_ADMIN_IDS configured to send reports.")
             return
 
+        text_chunks = chunk_text(text, max_length=4000)
         for admin_id in self.config.TELEGRAM_ADMIN_IDS:
             try:
-                self.bot.send_message(admin_id, text, parse_mode="Markdown")
+                for chunk in text_chunks:
+                    self.bot.send_message(admin_id, chunk, parse_mode="Markdown")
                 if files:
                     for fp in files:
                         with open(fp, "rb") as doc:

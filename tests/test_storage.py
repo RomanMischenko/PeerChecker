@@ -146,3 +146,13 @@ def test_get_filtered_peers(storage):
     assert len(filtered_both) == 1
     assert filtered_both[0]["login"] == "p2"
 
+
+def test_storage_connection_closed(storage):
+    """Ensure database connection is closed after connection_scope exit."""
+    with storage.connection_scope() as conn:
+        assert conn is not None
+        target_conn = conn
+    # Attempting to execute query on closed connection raises ProgrammingError
+    with pytest.raises(Exception):
+        target_conn.execute("SELECT 1")
+

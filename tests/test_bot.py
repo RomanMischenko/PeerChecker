@@ -73,3 +73,35 @@ def test_handle_check_now_busy(bot_app):
 
     bot_app.check_lock.release()
 
+
+def test_chunk_text():
+    from app.bot import chunk_text
+    assert chunk_text("") == []
+    short_text = "Hello world"
+    assert chunk_text(short_text, max_length=100) == [short_text]
+
+    lines = ["Line " + str(i) for i in range(100)]
+    long_text = "\n".join(lines)
+    chunks = chunk_text(long_text, max_length=100)
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert len(chunk) <= 100
+
+
+def test_peer_card_null_first_seen(bot_app):
+    peer_data = {
+        "login": "test_peer",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "VERIFIED",
+        "xp": 100,
+        "logtime": 5.0,
+        "first_seen": None,
+        "suspicion_reason": None,
+    }
+    text, markup = bot_app._build_peer_card_content(peer_data)
+    assert "Неизвестно" in text
+    assert "Нет" in text
+    # Ensure no empty backticks `` `` exist in formatted text
+    assert "``" not in text
+

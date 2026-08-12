@@ -29,12 +29,12 @@ A peer is evaluated based on three strict criteria:
   - `SKIPPED_WAVE`: Wave `className` does not match `TARGET_CLASS_NAME`.
 
 ### 2. Storage & Database Concurrency (`Storage`)
-- SQLite database connection uses WAL journal mode (`PRAGMA journal_mode=WAL;`) and a connection timeout of 30.0 seconds to support safe concurrent access between Telegram bot commands and background monitoring threads.
+- SQLite database connections use WAL journal mode (`PRAGMA journal_mode=WAL;`), a 30.0s connection timeout, and auto-closing `connection_scope()` context managers to prevent database connection leaks across concurrent Telegram command handlers and background threads.
 - Peer records are upserted via `ON CONFLICT(login) DO UPDATE`, preserving manual moderation flags (`is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END`).
 
 ### 3. API Client Stability (`S21ApiClient`)
-- Reuses a persistent `requests.Session()` HTTP connection pool to avoid TCP socket exhaustion.
-- Features exponential backoff retries for transient 5xx HTTP server errors and rate limits (429), plus automatic bearer token refresh on 401 Unauthorized responses.
+- Reuses a persistent `requests.Session()` HTTP connection pool with context manager support (`__enter__`/`__exit__` and `close()`) to avoid TCP socket leaks.
+- Features exponential backoff retries for transient 5xx HTTP server errors and rate limits (429), plus automatic bearer token refresh on 401 Unauthorized responses. Safe parsing for null/missing `expires_in` values from Keycloak.
 
 ---
 

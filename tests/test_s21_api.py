@@ -66,3 +66,27 @@ def test_retry_on_500_error(mock_post, mock_request):
     assert info == {"className": "26_08_NN"}
     assert mock_request.call_count == 2
 
+
+@patch("requests.Session.post")
+def test_authenticate_null_expires_in(mock_post):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "access_token": "token_123",
+        "expires_in": None,
+    }
+    mock_response.raise_for_status.return_value = None
+    mock_post.return_value = mock_response
+
+    client = S21ApiClient("login", "pass")
+    token = client.authenticate()
+    assert token == "token_123"
+    assert client.token_expires_at > 0
+
+
+def test_s21_api_context_manager():
+    with S21ApiClient("login", "pass") as client:
+        assert client is not None
+        mock_session = MagicMock()
+        client.session = mock_session
+    mock_session.close.assert_called_once()
+
