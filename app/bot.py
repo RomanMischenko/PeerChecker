@@ -48,58 +48,59 @@ class PeerCheckerBot:
             return wrapper
 
         @self.bot.message_handler(commands=["start"])
-
         @admin_only
         def handle_start(message: types.Message) -> None:
             text = (
                 "**Привет! Я бот поиска и валидации новых пиров Школы 21.**\n\n"
                 "**Доступные команды:**\n"
-                "/start — Справка и приветствие\n"
-                "/start_monitoring — Запуск автоматического фонового мониторинга\n"
-                "/stop_monitoring — Остановка фонового мониторинга\n"
-                "/check_now — Запуск проверки вне очереди\n"
-                "/status — Статус работы бота и статистика базы данных\n"
-                "/peers [verified|suspicious|all|tribe] — Получение текущего списка пиров из БД\n"
-                "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
-                "/peer <login> — Карточка пира с возможностью смены статуса\n"
-                "/set_status <login> <verified|suspicious> — Ручная смена статуса пира\n"
+                "`/start` — Справка и приветствие\n"
+                "`/start_monitoring` — Запуск автоматического фонового мониторинга\n"
+                "`/stop_monitoring` — Остановка фонового мониторинга\n"
+                "`/check_now` — Запуск проверки вне очереди\n"
+                "`/status` — Статус работы бота и статистика базы данных\n"
+                "`/peers` — Список пиров из БД (`/peers verified`, `/peers 604`)\n"
+                "`/export` — Экспорт текущих пиров в .txt файлы по трайбам\n"
+                "`/peer <login>` — Карточка пира с возможностью смены статуса\n"
+                "`/set_status <login> <verified|suspicious>` — Ручная смена статуса пира\n"
             )
             self.bot.reply_to(message, text, parse_mode="Markdown")
 
-
-        @self.bot.message_handler(commands=["start_monitoring"])
+        @self.bot.message_handler(commands=["start_monitoring", "startmonitoring"])
         @admin_only
         def handle_start_monitoring(message: types.Message) -> None:
             if self.monitoring_active:
-                self.bot.reply_to(message, "ℹ️ Фоновый мониторинг уже запущен.")
+                self.bot.reply_to(message, "Фоновый мониторинг уже запущен.")
                 return
 
             self.monitoring_active = True
             self.stop_event.clear()
             self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
             self.monitoring_thread.start()
+            logger.info(f"Monitoring started by admin user_id {message.from_user.id}")
             self.bot.reply_to(
                 message,
-                f"✅ **Фоновый мониторинг успешно запущен!**\n"
+                f"Фоновый мониторинг успешно запущен!\n"
                 f"Интервал проверки: каждый(е) {self.config.CHECK_INTERVAL_MINUTES} мин.",
                 parse_mode="Markdown",
             )
 
-        @self.bot.message_handler(commands=["stop_monitoring"])
+        @self.bot.message_handler(commands=["stop_monitoring", "stopmonitoring"])
         @admin_only
         def handle_stop_monitoring(message: types.Message) -> None:
             if not self.monitoring_active:
-                self.bot.reply_to(message, "ℹ️ Фоновый мониторинг не запущен.")
+                self.bot.reply_to(message, "Фоновый мониторинг не запущен.")
                 return
 
             self.monitoring_active = False
             self.stop_event.set()
-            self.bot.reply_to(message, "🛑 **Фоновый мониторинг остановлен.**", parse_mode="Markdown")
+            logger.info(f"Monitoring stopped by admin user_id {message.from_user.id}")
+            self.bot.reply_to(message, "Фоновый мониторинг остановлен.", parse_mode="Markdown")
 
-        @self.bot.message_handler(commands=["check_now"])
+        @self.bot.message_handler(commands=["check_now", "checknow"])
         @admin_only
         def handle_check_now(message: types.Message) -> None:
-            self.bot.reply_to(message, "🔎 **Запускаю мгновенную проверку пиров...**", parse_mode="Markdown")
+            self.bot.reply_to(message, "Запускаю мгновенную проверку пиров...", parse_mode="Markdown")
+            logger.info(f"Manual check triggered by admin user_id {message.from_user.id}")
             threading.Thread(target=self.run_check_and_notify, daemon=True).start()
 
         @self.bot.message_handler(commands=["status"])
@@ -108,18 +109,18 @@ class PeerCheckerBot:
             stats = self.storage.get_stats()
             last_check = self.storage.get_last_check_info()
 
-            status_str = "🟢 Запущен" if self.monitoring_active else "🔴 Остановлен"
+            status_str = "Запущен" if self.monitoring_active else "Остановлен"
             last_check_str = last_check["timestamp"] if last_check else "Еще не проводилась"
 
             text = (
-                f"📊 **Текущий статус бота PeerChecker**\n\n"
+                f"**Текущий статус бота PeerChecker**\n\n"
                 f"• **Мониторинг:** {status_str}\n"
                 f"• **Интервал:** {self.config.CHECK_INTERVAL_MINUTES} мин.\n"
                 f"• **Последняя проверка:** `{last_check_str}`\n"
                 f"• **Всего пиров в БД:** {stats.get('total', 0)}\n"
-                f"  - ✅ Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
-                f"  - ⚠️ Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n\n"
-                f"📌 **По трайбам:**\n"
+                f"  - Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
+                f"  - Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n\n"
+                f"**По трайбам:**\n"
             )
 
             by_tribe = stats.get("by_tribe", {})
@@ -129,7 +130,7 @@ class PeerCheckerBot:
                 for tid, tdata in by_tribe.items():
                     text += (
                         f"• **{tdata['tribe_name']}** (ID {tid}): "
-                        f"всего {tdata['total']} (✅ {tdata['verified']} / ⚠️ {tdata['suspicious']})\n"
+                        f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']})\n"
                     )
 
             self.bot.reply_to(message, text, parse_mode="Markdown")
@@ -139,25 +140,25 @@ class PeerCheckerBot:
         def handle_peer_info(message: types.Message) -> None:
             parts = message.text.strip().split()
             if len(parts) < 2:
-                self.bot.reply_to(message, "⚠️ Укажите логин пира. Пример: `/peer ivanov-ivan`", parse_mode="Markdown")
+                self.bot.reply_to(message, "Укажите логин пира. Пример: `/peer ivanov-ivan`", parse_mode="Markdown")
                 return
 
             login = parts[1].strip()
             peer = self.storage.get_peer(login)
             if not peer:
-                self.bot.reply_to(message, f"❌ Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
+                self.bot.reply_to(message, f"Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
                 return
 
             self._send_peer_card(message.chat.id, peer)
 
-        @self.bot.message_handler(commands=["set_status"])
+        @self.bot.message_handler(commands=["set_status", "setstatus"])
         @admin_only
         def handle_set_status(message: types.Message) -> None:
             parts = message.text.strip().split()
             if len(parts) < 3:
                 self.bot.reply_to(
                     message,
-                    "⚠️ Формат команды: `/set_status <login> <verified|suspicious>`",
+                    "Формат команды: `/set_status <login> <verified|suspicious>`",
                     parse_mode="Markdown",
                 )
                 return
@@ -166,18 +167,19 @@ class PeerCheckerBot:
             new_status = parts[2].strip().upper()
 
             if new_status not in ("VERIFIED", "SUSPICIOUS"):
-                self.bot.reply_to(message, "❌ Статус должен быть `VERIFIED` или `SUSPICIOUS`.", parse_mode="Markdown")
+                self.bot.reply_to(message, "Статус должен быть `VERIFIED` или `SUSPICIOUS`.", parse_mode="Markdown")
                 return
 
             updated = self.storage.update_peer_status(login, new_status, is_manual=True)
             if updated:
                 self.bot.reply_to(
                     message,
-                    f"✅ Статус пира `{login}` успешно изменен на **{new_status}** (ручная модерация).",
+                    f"Статус пира `{login}` успешно изменен на **{new_status}** (ручная модерация).",
                     parse_mode="Markdown",
                 )
             else:
-                self.bot.reply_to(message, f"❌ Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
+                self.bot.reply_to(message, f"Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
+
 
         @self.bot.message_handler(commands=["peers", "list"])
         @admin_only
