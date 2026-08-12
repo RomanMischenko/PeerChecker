@@ -17,19 +17,6 @@ from app.validator import PeerValidator
 logger = logging.getLogger(__name__)
 
 
-def admin_only(func: Callable) -> Callable:
-    """Decorator to restrict bot commands to authorized admin Telegram User IDs."""
-    @functools.wraps(func)
-    def wrapper(self: Any, message: types.Message, *args: Any, **kwargs: Any) -> Any:
-        user_id = message.from_user.id
-        if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
-            logger.warning(f"Unauthorized access attempt by user_id {user_id}")
-            self.bot.reply_to(message, "⛔ У вас нет прав для управления этим ботом.")
-            return None
-        return func(self, message, *args, **kwargs)
-    return wrapper
-
-
 class PeerCheckerBot:
     def __init__(self, config: Config, storage: Storage):
         self.config = config
@@ -48,7 +35,20 @@ class PeerCheckerBot:
 
     def _register_handlers(self) -> None:
         """Register Telegram bot command handlers."""
+        def admin_only(func: Callable) -> Callable:
+            """Decorator to restrict bot commands to authorized admin Telegram User IDs."""
+            @functools.wraps(func)
+            def wrapper(message: types.Message, *args: Any, **kwargs: Any) -> Any:
+                user_id = message.from_user.id
+                if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
+                    logger.warning(f"Unauthorized access attempt by user_id {user_id}")
+                    self.bot.reply_to(message, "У вас нет прав для управления этим ботом.")
+                    return None
+                return func(message, *args, **kwargs)
+            return wrapper
+
         @self.bot.message_handler(commands=["start"])
+
         @admin_only
         def handle_start(message: types.Message) -> None:
             text = (
