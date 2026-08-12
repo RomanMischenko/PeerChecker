@@ -51,19 +51,20 @@ class PeerCheckerBot:
         @admin_only
         def handle_start(message: types.Message) -> None:
             text = (
-                "**Привет! Я бот поиска и валидации новых пиров Школы 21.**\n\n"
-                "**Доступные команды:**\n"
-                "`/start` — Справка и приветствие\n"
-                "`/start_monitoring` — Запуск автоматического фонового мониторинга\n"
-                "`/stop_monitoring` — Остановка фонового мониторинга\n"
-                "`/check_now` — Запуск проверки вне очереди\n"
-                "`/status` — Статус работы бота и статистика базы данных\n"
-                "`/peers` — Список пиров из БД (`/peers verified`, `/peers 604`)\n"
-                "`/export` — Экспорт текущих пиров в .txt файлы по трайбам\n"
-                "`/peer <login>` — Карточка пира с возможностью смены статуса\n"
-                "`/set_status <login> <verified|suspicious>` — Ручная смена статуса пира\n"
+                "Привет! Я бот поиска и валидации новых пиров Школы 21.\n\n"
+                "Доступные команды:\n"
+                "/start — Справка и приветствие\n"
+                "/start_monitoring — Запуск автоматического фонового мониторинга\n"
+                "/stop_monitoring — Остановка фонового мониторинга\n"
+                "/check_now — Запуск проверки вне очереди\n"
+                "/status — Статус работы бота и статистика базы данных\n"
+                "/peers — Список пиров из БД (/peers verified, /peers 604)\n"
+                "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
+                "/peer <login> — Карточка пира с возможностью смены статуса\n"
+                "/set_status <login> <verified|suspicious> — Ручная смена статуса пира\n"
             )
-            self.bot.reply_to(message, text, parse_mode="Markdown")
+            self.bot.reply_to(message, text)
+
 
         @self.bot.message_handler(commands=["start_monitoring", "startmonitoring"])
         @admin_only
