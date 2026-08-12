@@ -65,42 +65,62 @@ def parse_class_names(raw_value: str) -> list[str]:
     return [item.strip().upper() for item in raw_value.split(",") if item.strip()]
 
 
+def _get_env_int(key: str, default: int) -> int:
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 @dataclass
 class Config:
     TELEGRAM_BOT_TOKEN: str = field(
-        default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", "")
+        default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     )
     TELEGRAM_ADMIN_IDS: list[int] = field(
         default_factory=lambda: parse_admin_ids(os.getenv("TELEGRAM_ADMIN_IDS", ""))
     )
     S21_LOGIN: str = field(
-        default_factory=lambda: os.getenv("S21_LOGIN", "")
+        default_factory=lambda: os.getenv("S21_LOGIN", "").strip()
     )
     S21_PASSWORD: str = field(
-        default_factory=lambda: os.getenv("S21_PASSWORD", "")
+        default_factory=lambda: os.getenv("S21_PASSWORD", "").strip()
     )
     CAMPUS_ID: str = field(
         default_factory=lambda: os.getenv(
             "CAMPUS_ID", "5a23bec9-f989-485d-935b-3f0dc61c4812"
-        )
+        ).strip()
     )
     TARGET_COALITIONS: dict[int, str] = field(
         default_factory=lambda: parse_coalitions(os.getenv("TARGET_COALITIONS", ""))
     )
     CHECK_INTERVAL_MINUTES: int = field(
-        default_factory=lambda: int(os.getenv("CHECK_INTERVAL_MINUTES", "60"))
+        default_factory=lambda: _get_env_int("CHECK_INTERVAL_MINUTES", 60)
     )
     MIN_XP: int = field(
-        default_factory=lambda: int(os.getenv("MIN_XP", "0"))
+        default_factory=lambda: _get_env_int("MIN_XP", 0)
     )
     MIN_LOGTIME: float = field(
-        default_factory=lambda: float(os.getenv("MIN_LOGTIME", "0.0"))
+        default_factory=lambda: _get_env_float("MIN_LOGTIME", 0.0)
     )
     TARGET_PROJECT_IDS: list[int] = field(
         default_factory=lambda: parse_project_ids(os.getenv("TARGET_PROJECT_IDS", ""))
     )
     MIN_ACCEPTED_PROJECTS: int = field(
-        default_factory=lambda: int(os.getenv("MIN_ACCEPTED_PROJECTS", "3"))
+        default_factory=lambda: _get_env_int("MIN_ACCEPTED_PROJECTS", 3)
     )
     TARGET_CLASS_NAME: str = field(
         default_factory=lambda: os.getenv("TARGET_CLASS_NAME", "").strip()

@@ -73,4 +73,25 @@ def test_validate_peer_skipped_wave():
     mock_api.get_participant_feedback.assert_not_called()
 
 
+def test_validate_peer_null_feedback():
+    mock_api = MagicMock()
+    mock_api.get_participant_info.return_value = {"login": "null_fb_peer"}
+    mock_api.get_participant_logtime.return_value = 5.0
+    mock_api.get_participant_xp_history.return_value = None
+    mock_api.get_participant_feedback.return_value = {
+        "averageVerifierPunctuality": None,
+        "averageVerifierInterest": None,
+        "averageVerifierThoroughness": None,
+        "averageVerifierFriendliness": None,
+    }
+    mock_api.get_participant_project.return_value = {"status": "ACCEPTED"}
+
+    validator = PeerValidator(target_project_ids=[73187, 73188, 73189], min_accepted_projects=3)
+    result = validator.validate_peer(mock_api, "null_fb_peer")
+
+    assert result["status"] == "SUSPICIOUS"
+    assert "Оценки фидбека проверяющего равны 0" in result["suspicion_reason_text"]
+
+
+
 

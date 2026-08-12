@@ -53,6 +53,9 @@ def main() -> None:
     except Exception as e:
         logger.critical(f"Unhandled error in bot main loop: {e}", exc_info=True)
         sys.exit(1)
+    finally:
+        bot_app.stop_event.set()
+        logger.info("Signaled background monitoring thread to stop.")
 
 
 if __name__ == "__main__":

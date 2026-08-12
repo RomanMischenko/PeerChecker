@@ -1,6 +1,8 @@
 import functools
 import logging
 import os
+import re
+import shutil
 import tempfile
 import threading
 import time
@@ -17,6 +19,13 @@ from app.validator import PeerValidator
 logger = logging.getLogger(__name__)
 
 
+def escape_markdown(text: str) -> str:
+    """Escape Telegram Markdown (v1) special characters."""
+    if not text:
+        return ""
+    return re.sub(r"([_*`\[])", r"\\\1", text)
+
+
 class PeerCheckerBot:
     def __init__(self, config: Config, storage: Storage):
         self.config = config
@@ -28,8 +37,6 @@ class PeerCheckerBot:
             min_logtime=self.config.MIN_LOGTIME,
             target_class_names=self.config.target_class_names,
         )
-
-
 
         self.monitoring_active = False
         self.monitoring_thread: threading.Thread | None = None
@@ -70,7 +77,6 @@ class PeerCheckerBot:
             )
             self.bot.reply_to(message, text)
 
-
         @self.bot.message_handler(commands=["start_monitoring", "startmonitoring"])
         @admin_only
         def handle_start_monitoring(message: types.Message) -> None:
@@ -105,6 +111,9 @@ class PeerCheckerBot:
         @self.bot.message_handler(commands=["check_now", "checknow"])
         @admin_only
         def handle_check_now(message: types.Message) -> None:
+            if self.check_lock.locked():
+                self.bot.reply_to(message, "Проверка пиров уже выполняется в данный момент. Пожалуйста, подождите.")
+                return
             self.bot.reply_to(message, "Запускаю мгновенную проверку пиров...", parse_mode="Markdown")
             logger.info(f"Manual check triggered by admin user_id {message.from_user.id}")
             threading.Thread(target=self.run_check_and_notify, daemon=True).start()
@@ -122,7 +131,7 @@ class PeerCheckerBot:
                 f"**Текущий статус бота PeerChecker**\n\n"
                 f"• **Мониторинг:** {status_str}\n"
                 f"• **Интервал:** {self.config.CHECK_INTERVAL_MINUTES} мин.\n"
-                f"• **Последняя проверка:** `{last_check_str}`\n"
+                f"• **Последняя проверка:** `{escape_markdown(last_check_str)}`\n"
                 f"• **Всего пиров в БД:** {stats.get('total', 0)}\n"
                 f"  - Проверенные (`VERIFIED`): {stats.get('total_verified', 0)}\n"
                 f"  - Подозрительные (`SUSPICIOUS`): {stats.get('total_suspicious', 0)}\n\n"
@@ -135,7 +144,7 @@ class PeerCheckerBot:
             else:
                 for tid, tdata in by_tribe.items():
                     text += (
-                        f"• **{tdata['tribe_name']}** (ID {tid}): "
+                        f"• **{escape_markdown(tdata['tribe_name'])}** (ID {tid}): "
                         f"всего {tdata['total']} (verified: {tdata['verified']} / suspicious: {tdata['suspicious']})\n"
                     )
 
@@ -152,7 +161,7 @@ class PeerCheckerBot:
             login = parts[1].strip()
             peer = self.storage.get_peer(login)
             if not peer:
-                self.bot.reply_to(message, f"Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
+                self.bot.reply_to(message, f"Пир `{escape_markdown(login)}` не найден в базе данных.", parse_mode="Markdown")
                 return
 
             self._send_peer_card(message.chat.id, peer)
@@ -180,12 +189,11 @@ class PeerCheckerBot:
             if updated:
                 self.bot.reply_to(
                     message,
-                    f"Статус пира `{login}` успешно изменен на **{new_status}** (ручная модерация).",
+                    f"Статус пира `{escape_markdown(login)}` успешно изменен на **{new_status}** (ручная модерация).",
                     parse_mode="Markdown",
                 )
             else:
-                self.bot.reply_to(message, f"Пир `{login}` не найден в базе данных.", parse_mode="Markdown")
-
+                self.bot.reply_to(message, f"Пир `{escape_markdown(login)}` не найден в базе данных.", parse_mode="Markdown")
 
         @self.bot.message_handler(commands=["peers", "list"])
         @admin_only
@@ -209,7 +217,7 @@ class PeerCheckerBot:
 
             filter_desc = []
             if filter_tribe:
-                filter_desc.append(f"трайб: `{filter_tribe}`")
+                filter_desc.append(f"трайб: `{escape_markdown(filter_tribe)}`")
             if filter_status:
                 filter_desc.append(f"статус: `{filter_status}`")
             desc_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
@@ -218,38 +226,38 @@ class PeerCheckerBot:
             filename = f"peers_{now_str}.txt"
             temp_path = os.path.join(tempfile.gettempdir(), filename)
 
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
-                if desc_str:
-                    f.write(f"Фильтры: {desc_str}\n")
-                f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
-                for p in peers:
-                    manual_str = " [ручной статус]" if p.get("is_manual") else ""
-                    f.write(
-                        f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
-                        f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                    )
-                    if p.get("suspicion_reason"):
-                        f.write(f"  Причина: {p['suspicion_reason']}\n")
-
-            v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
-            s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
-
-            caption = (
-                f"**Список пиров из БД{desc_str}**\n\n"
-                f"• Всего найдено: **{len(peers)}** чел.\n"
-                f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
-                f"Подробный список прикреплен в файле."
-            )
-
-            with open(temp_path, "rb") as doc:
-                self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
-
             try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write(f"=== Список пиров из БД (всего: {len(peers)}) ===\n")
+                    if desc_str:
+                        f.write(f"Фильтры: {desc_str}\n")
+                    f.write(f"Дата экспорта: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n")
+                    for p in peers:
+                        manual_str = " [ручной статус]" if p.get("is_manual") else ""
+                        f.write(
+                            f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
+                            f"Статус: {p['status']}{manual_str} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                        )
+                        if p.get("suspicion_reason"):
+                            f.write(f"  Причина: {p['suspicion_reason']}\n")
 
+                v_count = sum(1 for p in peers if p["status"] == "VERIFIED")
+                s_count = sum(1 for p in peers if p["status"] == "SUSPICIOUS")
+
+                caption = (
+                    f"**Список пиров из БД{desc_str}**\n\n"
+                    f"• Всего найдено: **{len(peers)}** чел.\n"
+                    f"• Verified: **{v_count}** | Suspicious: **{s_count}**\n"
+                    f"Подробный список прикреплен в файле."
+                )
+
+                with open(temp_path, "rb") as doc:
+                    self.bot.send_document(message.chat.id, doc, caption=caption, parse_mode="Markdown")
+            finally:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
 
         @self.bot.message_handler(commands=["export", "export_txt"])
         @admin_only
@@ -265,46 +273,44 @@ class PeerCheckerBot:
             temp_dir = tempfile.mkdtemp()
             files_to_send = []
 
-            by_tribe: dict[int, list[dict[str, Any]]] = {}
-            for p in peers:
-                by_tribe.setdefault(p["tribe_id"], []).append(p)
+            try:
+                by_tribe: dict[int, list[dict[str, Any]]] = {}
+                for p in peers:
+                    by_tribe.setdefault(p["tribe_id"], []).append(p)
 
-            for tid, tpeers in by_tribe.items():
-                tname = tpeers[0]["tribe_name"]
-                verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
-                suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                for tid, tpeers in by_tribe.items():
+                    tname = tpeers[0]["tribe_name"]
+                    verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
+                    suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
 
-                if verified_peers:
-                    v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
-                    with open(v_path, "w", encoding="utf-8") as f:
-                        f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
-                        f.write(f"Дата: {now_str}\n\n")
-                        for p in verified_peers:
-                            f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
-                    files_to_send.append(v_path)
+                    if verified_peers:
+                        v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
+                        with open(v_path, "w", encoding="utf-8") as f:
+                            f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
+                            f.write(f"Дата: {now_str}\n\n")
+                            for p in verified_peers:
+                                f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                        files_to_send.append(v_path)
 
-                if suspicious_peers:
-                    s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
-                    with open(s_path, "w", encoding="utf-8") as f:
-                        f.write(f"=== Подозрительные пиры (SUSPICIOUS) — Трайб {tname} (ID {tid}) ===\n")
-                        f.write(f"Дата: {now_str}\n\n")
-                        for p in suspicious_peers:
-                            f.write(
-                                f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                                f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
-                            )
-                    files_to_send.append(s_path)
+                    if suspicious_peers:
+                        s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
+                        with open(s_path, "w", encoding="utf-8") as f:
+                            f.write(f"=== Подозрительные пиры (SUSPICIOUS) — Трайб {tname} (ID {tid}) ===\n")
+                            f.write(f"Дата: {now_str}\n\n")
+                            for p in suspicious_peers:
+                                f.write(
+                                    f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                    f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
+                                )
+                        files_to_send.append(s_path)
 
-            for fp in files_to_send:
-                with open(fp, "rb") as doc:
-                    self.bot.send_document(message.chat.id, doc)
-                try:
-                    os.remove(fp)
-                except Exception:
-                    pass
+                for fp in files_to_send:
+                    with open(fp, "rb") as doc:
+                        self.bot.send_document(message.chat.id, doc)
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("set_status:"))
-
         def handle_status_callback(call: types.CallbackQuery) -> None:
             user_id = call.from_user.id
             if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
@@ -327,6 +333,8 @@ class PeerCheckerBot:
                         )
                     except Exception:
                         pass
+            else:
+                self.bot.answer_callback_query(call.id, "⚠️ Ошибка формата данных.")
 
     def _build_peer_card_content(self, peer: dict[str, Any]) -> tuple[str, types.InlineKeyboardMarkup]:
         """Format peer card text and inline buttons."""
@@ -336,13 +344,13 @@ class PeerCheckerBot:
         manual_flag = " (изменено вручную)" if peer.get("is_manual") else ""
 
         text = (
-            f"👤 **Карточка пира `{login}`**\n\n"
-            f"• **Трайб:** {peer['tribe_name']} (ID {peer['tribe_id']})\n"
+            f"👤 **Карточка пира `{escape_markdown(login)}`**\n\n"
+            f"• **Трайб:** {escape_markdown(peer['tribe_name'])} (ID {peer['tribe_id']})\n"
             f"• **Статус:** {status_emoji}{manual_flag}\n"
             f"• **Суммарный XP:** {peer.get('xp', 0)}\n"
             f"• **Логтайм:** {peer.get('logtime', 0.0):.2f} ч/нед\n"
-            f"• **Причина / Примечание:** `{peer.get('suspicion_reason') or 'Нет'}`\n"
-            f"• **Первое обнаружение:** `{peer.get('first_seen')}`\n"
+            f"• **Причина / Примечание:** `{escape_markdown(peer.get('suspicion_reason') or 'Нет')}`\n"
+            f"• **Первое обнаружение:** `{escape_markdown(peer.get('first_seen'))}`\n"
         )
 
         markup = types.InlineKeyboardMarkup()
@@ -450,11 +458,6 @@ class PeerCheckerBot:
                 except Exception as e:
                     logger.error(f"Error checking coalition {tribe_id} ({tribe_name}): {e}")
 
-
-            # Save new peers to database
-            if all_new_peers:
-                self.storage.save_peers_batch(all_new_peers)
-
             now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
             target_wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
 
@@ -470,7 +473,7 @@ class PeerCheckerBot:
                 else:
                     report_text = (
                         f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                        f"• **Целевая волна:** `{target_wave_str}`\n"
+                        f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
                         f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
                         f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
                         f"• **Последняя проверка:** `{now_str}`"
@@ -485,7 +488,7 @@ class PeerCheckerBot:
             total_new = len(all_new_peers)
             summary_text = (
                 f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
-                f"• **Целевая волна:** `{target_wave_str}`\n"
+                f"• **Целевая волна:** `{escape_markdown(target_wave_str)}`\n"
                 f"• **Время проверки:** `{now_str}`\n"
             )
             if skipped_wave_count > 0:
@@ -496,53 +499,49 @@ class PeerCheckerBot:
                 tpeers = new_peers_by_tribe.get(tid, [])
                 v_count = sum(1 for p in tpeers if p["status"] == "VERIFIED")
                 s_count = sum(1 for p in tpeers if p["status"] == "SUSPICIOUS")
-                summary_text += f"• **{tname}:** {len(tpeers)} новых (✅ {v_count} verified / ⚠️ {s_count} suspicious)\n"
-
+                summary_text += f"• **{escape_markdown(tname)}:** {len(tpeers)} новых (✅ {v_count} verified / ⚠️ {s_count} suspicious)\n"
 
             # Generate report files per tribe
             files_to_send = []
             temp_dir = tempfile.mkdtemp()
 
-            for tid, tname in self.config.TARGET_COALITIONS.items():
-                tpeers = new_peers_by_tribe.get(tid, [])
-                if not tpeers:
-                    continue
+            try:
+                for tid, tname in self.config.TARGET_COALITIONS.items():
+                    tpeers = new_peers_by_tribe.get(tid, [])
+                    if not tpeers:
+                        continue
 
-                verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
-                suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
+                    verified_peers = [p for p in tpeers if p["status"] == "VERIFIED"]
+                    suspicious_peers = [p for p in tpeers if p["status"] == "SUSPICIOUS"]
 
-                # Verified file
-                if verified_peers:
-                    v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
-                    with open(v_path, "w", encoding="utf-8") as f:
-                        f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
-                        f.write(f"Дата проверки: {now_str}\n\n")
-                        for p in verified_peers:
-                            f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
-                    files_to_send.append(v_path)
+                    # Verified file
+                    if verified_peers:
+                        v_path = os.path.join(temp_dir, f"{tname}_verified.txt")
+                        with open(v_path, "w", encoding="utf-8") as f:
+                            f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
+                            f.write(f"Дата проверки: {now_str}\n\n")
+                            for p in verified_peers:
+                                f.write(f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n")
+                        files_to_send.append(v_path)
 
-                # Suspicious file
-                if suspicious_peers:
-                    s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
-                    with open(s_path, "w", encoding="utf-8") as f:
-                        f.write(f"=== Список подозрительных пиров (SUSPICIOUS) — Трайб {tname} ===\n")
-                        f.write(f"Дата проверки: {now_str}\n\n")
-                        for p in suspicious_peers:
-                            f.write(
-                                f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
-                                f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
-                            )
-                    files_to_send.append(s_path)
+                    # Suspicious file
+                    if suspicious_peers:
+                        s_path = os.path.join(temp_dir, f"{tname}_suspicious.txt")
+                        with open(s_path, "w", encoding="utf-8") as f:
+                            f.write(f"=== Список подозрительных пиров (SUSPICIOUS) — Трайб {tname} ===\n")
+                            f.write(f"Дата проверки: {now_str}\n\n")
+                            for p in suspicious_peers:
+                                f.write(
+                                    f"• Логин: {p['login']} | XP: {p['xp']} | Логтайм: {p['logtime']:.2f} ч/нед\n"
+                                    f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
+                                )
+                        files_to_send.append(s_path)
 
-            # Send summary + files to all admins
-            self._send_to_admins(summary_text, files=files_to_send)
+                # Send summary + files to all admins
+                self._send_to_admins(summary_text, files=files_to_send)
 
-            # Cleanup temp files
-            for fp in files_to_send:
-                try:
-                    os.remove(fp)
-                except Exception:
-                    pass
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
             self.storage.log_check_run(total_new, f"Найдено новых: {total_new}")
 

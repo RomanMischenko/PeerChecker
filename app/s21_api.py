@@ -32,6 +32,7 @@ class S21ApiClient:
         self.max_retries = max_retries
         self.access_token: str | None = None
         self.token_expires_at: float = 0.0
+        self.session = requests.Session()
 
     def authenticate(self) -> str:
         """Authenticate against Keycloak and retrieve bearer token."""
@@ -45,7 +46,7 @@ class S21ApiClient:
 
         logger.info("Authenticating with S21 Keycloak...")
         try:
-            resp = requests.post(self.auth_url, data=payload, headers=headers, timeout=15)
+            resp = self.session.post(self.auth_url, data=payload, headers=headers, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             token = data.get("access_token")
@@ -69,7 +70,7 @@ class S21ApiClient:
         return self.access_token
 
     def _request(self, method: str, endpoint: str, params: dict | None = None) -> Any:
-        """Execute HTTP request with rate-limiting delay, 401 token refresh, and 429 exponential backoff."""
+        """Execute HTTP request with rate-limiting delay, 401 token refresh, and 429/5xx exponential backoff."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         for attempt in range(1, self.max_retries + 1):
@@ -83,20 +84,28 @@ class S21ApiClient:
             time.sleep(self.request_delay)
 
             try:
-                resp = requests.request(method, url, headers=headers, params=params, timeout=20)
+                resp = self.session.request(method, url, headers=headers, params=params, timeout=20)
 
                 # Handle 401 Unauthorized -> Refresh token & retry
                 if resp.status_code == 401:
                     logger.warning("Token expired or unauthorized (401). Refreshing token...")
                     self.authenticate()
-                    continue
+                    if attempt < self.max_retries:
+                        continue
+                    # Extra retry attempt with refreshed token
+                    token = self.access_token
+                    headers["Authorization"] = f"Bearer {token}"
+                    resp = self.session.request(method, url, headers=headers, params=params, timeout=20)
 
-                # Handle 429 Too Many Requests -> Exponential backoff retry
-                if resp.status_code == 429:
-                    wait_time = (2 ** attempt) * 0.5
-                    logger.warning(f"Rate limited (429). Retrying in {wait_time:.1f}s (attempt {attempt}/{self.max_retries})...")
-                    time.sleep(wait_time)
-                    continue
+                # Handle 429 Too Many Requests or 5xx Server Errors -> Exponential backoff retry
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    if attempt < self.max_retries:
+                        wait_time = (2 ** attempt) * 0.5
+                        logger.warning(
+                            f"HTTP {resp.status_code} error for {endpoint}. Retrying in {wait_time:.1f}s (attempt {attempt}/{self.max_retries})..."
+                        )
+                        time.sleep(wait_time)
+                        continue
 
                 resp.raise_for_status()
                 if resp.status_code == 204:
@@ -104,13 +113,16 @@ class S21ApiClient:
                 return resp.json()
 
             except requests.HTTPError as e:
-                if resp.status_code not in (401, 429) or attempt == self.max_retries:
+                if attempt == self.max_retries:
                     logger.error(f"HTTP error {resp.status_code} for {endpoint}: {resp.text}")
                     raise S21ApiError(f"HTTP {resp.status_code} error: {e}") from e
             except requests.RequestException as e:
                 if attempt == self.max_retries:
                     logger.error(f"Request exception for {endpoint}: {e}")
                     raise S21ApiError(f"Network error: {e}") from e
+                wait_time = (2 ** attempt) * 0.5
+                logger.warning(f"Network exception ({e}) for {endpoint}. Retrying in {wait_time:.1f}s...")
+                time.sleep(wait_time)
 
         raise S21ApiError(f"Failed request to {endpoint} after {self.max_retries} attempts.")
 

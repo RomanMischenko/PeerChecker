@@ -15,7 +15,7 @@ class Storage:
         self.init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -24,6 +24,7 @@ class Storage:
         logger.info(f"Initializing SQLite database schema at {self.db_path}")
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
             # Table: peers
             cursor.execute(
                 """
@@ -93,6 +94,7 @@ class Storage:
                         tribe_id=excluded.tribe_id,
                         tribe_name=excluded.tribe_name,
                         status=CASE WHEN is_manual = 1 THEN status ELSE excluded.status END,
+                        is_manual=CASE WHEN excluded.is_manual = 1 THEN 1 ELSE is_manual END,
                         updated_at=excluded.updated_at,
                         xp=excluded.xp,
                         logtime=excluded.logtime,

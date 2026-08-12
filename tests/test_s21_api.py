@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 from app.s21_api import S21ApiClient
 
 
-@patch("requests.post")
+@patch("requests.Session.post")
 def test_authenticate_success(mock_post):
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -19,8 +19,8 @@ def test_authenticate_success(mock_post):
     assert client.access_token == "mocked_bearer_token"
 
 
-@patch("requests.request")
-@patch("requests.post")
+@patch("requests.Session.request")
+@patch("requests.Session.post")
 def test_get_coalition_participants_pagination(mock_post, mock_request):
     # Auth mock
     mock_auth_resp = MagicMock()
@@ -42,3 +42,27 @@ def test_get_coalition_participants_pagination(mock_post, mock_request):
     logins = client.get_coalition_participants(604)
 
     assert logins == ["peer1", "peer2"]
+
+
+@patch("requests.Session.request")
+@patch("requests.Session.post")
+def test_retry_on_500_error(mock_post, mock_request):
+    mock_auth_resp = MagicMock()
+    mock_auth_resp.json.return_value = {"access_token": "mocked_token", "expires_in": 3600}
+    mock_post.return_value = mock_auth_resp
+
+    mock_resp_500 = MagicMock()
+    mock_resp_500.status_code = 500
+
+    mock_resp_200 = MagicMock()
+    mock_resp_200.status_code = 200
+    mock_resp_200.json.return_value = {"className": "26_08_NN"}
+
+    mock_request.side_effect = [mock_resp_500, mock_resp_200]
+
+    client = S21ApiClient("login", "pass", request_delay=0.0)
+    info = client.get_participant_info("peer1")
+
+    assert info == {"className": "26_08_NN"}
+    assert mock_request.call_count == 2
+

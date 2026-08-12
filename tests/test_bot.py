@@ -48,3 +48,28 @@ def test_handle_start_unauthorized(bot_app):
     assert bot_app.bot.reply_to.called
     args, kwargs = bot_app.bot.reply_to.call_args
     assert "У вас нет прав" in args[1]
+
+
+def test_escape_markdown():
+    from app.bot import escape_markdown
+    assert escape_markdown("john_doe*test`[1]") == r"john\_doe\*test\`\[1]"
+    assert escape_markdown("") == ""
+
+
+def test_handle_check_now_busy(bot_app):
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/check_now"
+
+    # Acquire check lock to simulate ongoing check
+    bot_app.check_lock.acquire()
+
+    handler = [h for h in bot_app.bot.message_handlers if "check_now" in h["filters"]["commands"]][0]
+    handler["function"](msg)
+
+    assert bot_app.bot.reply_to.called
+    args, kwargs = bot_app.bot.reply_to.call_args
+    assert "уже выполняется" in args[1]
+
+    bot_app.check_lock.release()
+

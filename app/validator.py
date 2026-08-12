@@ -5,6 +5,26 @@ from app.s21_api import S21ApiClient
 logger = logging.getLogger(__name__)
 
 
+def _safe_float(val: Any) -> float:
+    """Safely convert value to float, returning 0.0 if None or invalid."""
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _safe_int(val: Any) -> int:
+    """Safely convert value to int, returning 0 if None or invalid."""
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
 class PeerValidator:
     def __init__(
         self,
@@ -73,14 +93,12 @@ class PeerValidator:
         if isinstance(xp_history, list):
             for entry in xp_history:
                 if isinstance(entry, dict):
-                    xp_val = entry.get("expValue") or entry.get("value") or entry.get("xp") or entry.get("exp", 0)
-                    if isinstance(xp_val, (int, float)):
-                        total_xp += int(xp_val)
+                    raw_val = entry.get("expValue") or entry.get("value") or entry.get("xp") or entry.get("exp")
+                    total_xp += _safe_int(raw_val)
 
         if total_xp == 0 and isinstance(info, dict):
-            xp_val = info.get("expValue") or info.get("xp") or info.get("totalXp") or info.get("experience", 0)
-            if isinstance(xp_val, (int, float)):
-                total_xp = int(xp_val)
+            raw_val = info.get("expValue") or info.get("xp") or info.get("totalXp") or info.get("experience")
+            total_xp = _safe_int(raw_val)
 
         # Check projects: count ACCEPTED projects among target_project_ids via GET /v1/participants/{login}/projects/{projectId}
         logger.info(f"[{login}] Checking {len(self.target_project_ids)} target projects status...")
@@ -101,10 +119,10 @@ class PeerValidator:
 
         # Fetch feedback data: /v1/participants/{login}/feedback
         feedback = api_client.get_participant_feedback(login)
-        punctuality = float(feedback.get("averageVerifierPunctuality", 0)) if isinstance(feedback, dict) else 0.0
-        interest = float(feedback.get("averageVerifierInterest", 0)) if isinstance(feedback, dict) else 0.0
-        thoroughness = float(feedback.get("averageVerifierThoroughness", 0)) if isinstance(feedback, dict) else 0.0
-        friendliness = float(feedback.get("averageVerifierFriendliness", 0)) if isinstance(feedback, dict) else 0.0
+        punctuality = _safe_float(feedback.get("averageVerifierPunctuality")) if isinstance(feedback, dict) else 0.0
+        interest = _safe_float(feedback.get("averageVerifierInterest")) if isinstance(feedback, dict) else 0.0
+        thoroughness = _safe_float(feedback.get("averageVerifierThoroughness")) if isinstance(feedback, dict) else 0.0
+        friendliness = _safe_float(feedback.get("averageVerifierFriendliness")) if isinstance(feedback, dict) else 0.0
 
         has_feedback = (
             punctuality > 0 and interest > 0 and thoroughness > 0 and friendliness > 0
