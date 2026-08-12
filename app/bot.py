@@ -391,6 +391,8 @@ class PeerCheckerBot:
 
             new_peers_by_tribe: dict[int, list[dict[str, Any]]] = {}
             all_new_peers: list[dict[str, Any]] = []
+            skipped_wave_count = 0
+            total_unprocessed_count = 0
 
             for tribe_id, tribe_name in self.config.TARGET_COALITIONS.items():
                 if is_background and self.stop_event.is_set():
@@ -409,6 +411,7 @@ class PeerCheckerBot:
 
                     # Deduplication filter: only check logins not yet in SQLite DB!
                     unprocessed_logins = [l for l in participant_logins if l not in known_logins]
+                    total_unprocessed_count += len(unprocessed_logins)
                     logger.info(f"Found {len(unprocessed_logins)} new (unprocessed) logins for tribe {tribe_name}.")
 
                     tribe_new_peers = []
@@ -432,10 +435,11 @@ class PeerCheckerBot:
                             known_logins.add(login)
 
                             # Only add to notifications if not skipped by wave filter
-                            if not val_res.get("is_skipped"):
+                            if val_res.get("is_skipped"):
+                                skipped_wave_count += 1
+                            else:
                                 tribe_new_peers.append(val_res)
                                 all_new_peers.append(val_res)
-
 
                         except Exception as e:
                             logger.error(f"Error validating peer {login}: {e}")
@@ -452,31 +456,48 @@ class PeerCheckerBot:
                 self.storage.save_peers_batch(all_new_peers)
 
             now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+            target_wave_str = self.config.TARGET_CLASS_NAME if self.config.TARGET_CLASS_NAME else "Все волны"
 
             # Notification Logic
             if not all_new_peers:
-                report_text = (
-                    f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
-                    f"• **Результат:** Новых пиров не обнаружено.\n"
-                    f"• **Последняя проверка:** `{now_str}`"
-                )
+                if total_unprocessed_count == 0:
+                    report_text = (
+                        f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
+                        f"• **Результат:** Новых логинов на платформе не обнаружено.\n"
+                        f"• **Последняя проверка:** `{now_str}`"
+                    )
+                    log_msg = "Новых логинов на платформе не обнаружено"
+                else:
+                    report_text = (
+                        f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
+                        f"• **Целевая волна:** `{target_wave_str}`\n"
+                        f"• **Результат:** Пиры целевой волны пока не зарегистрированы.\n"
+                        f"• **Проверено новых пиров:** {total_unprocessed_count} (все из других волн, пропущены)\n"
+                        f"• **Последняя проверка:** `{now_str}`"
+                    )
+                    log_msg = f"Проверено {total_unprocessed_count} новых пиров, пиров целевой волны ({target_wave_str}) не обнаружено"
+
                 self._send_to_admins(report_text)
-                self.storage.log_check_run(0, "Новых пиров не обнаружено")
+                self.storage.log_check_run(0, log_msg)
                 return
 
-            # Summary for newly found peers
+            # Summary for newly found target wave peers
             total_new = len(all_new_peers)
             summary_text = (
-                f"🚨 **Обнаружены новые пиры!** ({total_new} чел.)\n"
-                f"• **Время проверки:** `{now_str}`\n\n"
-                f"📊 **Распределение по трайбам:**\n"
+                f"🚨 **Обнаружены новые пиры целевой волны!** ({total_new} чел.)\n"
+                f"• **Целевая волна:** `{target_wave_str}`\n"
+                f"• **Время проверки:** `{now_str}`\n"
             )
+            if skipped_wave_count > 0:
+                summary_text += f"• **Пропущено из других волн:** {skipped_wave_count} чел.\n"
+            summary_text += "\n📊 **Распределение по трайбам:**\n"
 
             for tid, tname in self.config.TARGET_COALITIONS.items():
                 tpeers = new_peers_by_tribe.get(tid, [])
                 v_count = sum(1 for p in tpeers if p["status"] == "VERIFIED")
                 s_count = sum(1 for p in tpeers if p["status"] == "SUSPICIOUS")
                 summary_text += f"• **{tname}:** {len(tpeers)} новых (✅ {v_count} verified / ⚠️ {s_count} suspicious)\n"
+
 
             # Generate report files per tribe
             files_to_send = []
