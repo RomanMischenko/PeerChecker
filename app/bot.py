@@ -79,6 +79,16 @@ def chunk_text(text: str, max_length: int = 4000) -> list[str]:
     return chunks
 
 
+def _format_user_info(user: types.User | None) -> str:
+    """Format user identification details for security audit logging."""
+    if not user:
+        return "user_id 0 (name: N/A, username: N/A)"
+
+    name_str = user.full_name.strip() if user.full_name and user.full_name.strip() else "N/A"
+    username_str = f"@{user.username}" if user.username else "no @username"
+    return f"user_id {user.id} (name: {name_str!r}, username: {username_str!r})"
+
+
 class PeerCheckerBot:
     def __init__(self, config: Config, storage: Storage):
         self.config = config
@@ -105,11 +115,11 @@ class PeerCheckerBot:
             def wrapper(message: types.Message, *args: Any, **kwargs: Any) -> Any:
                 user_id = message.from_user.id if message.from_user else 0
                 if user_id not in self.config.TELEGRAM_ADMIN_IDS:
-                    username = f"@{message.from_user.username}" if message.from_user and message.from_user.username else "N/A"
+                    user_info = _format_user_info(message.from_user)
                     cmd_text = message.text or message.caption or ""
                     chat_id = message.chat.id if message.chat else 0
                     logger.warning(
-                        f"Unauthorized command attempt by user_id {user_id} ({username}) in chat {chat_id}: {cmd_text!r}"
+                        f"Unauthorized command attempt by {user_info} in chat {chat_id}: {cmd_text!r}"
                     )
                     return None
                 return func(message, *args, **kwargs)
@@ -503,14 +513,14 @@ class PeerCheckerBot:
         @self.bot.callback_query_handler(func=lambda call: True)
         def handle_status_callback(call: types.CallbackQuery) -> None:
             user_id = call.from_user.id if call.from_user else 0
-            username = f"@{call.from_user.username}" if call.from_user and call.from_user.username else "N/A"
+            user_info = _format_user_info(call.from_user)
             data = call.data or ""
             if user_id not in self.config.TELEGRAM_ADMIN_IDS:
-                logger.warning(f"Unauthorized callback query attempt by user_id {user_id} ({username}): data={data!r}")
+                logger.warning(f"Unauthorized callback query attempt by {user_info}: data={data!r}")
                 return
 
             if not data.startswith("set_status:"):
-                logger.info(f"Unhandled callback query from admin user_id {user_id} ({username}): data={data!r}")
+                logger.info(f"Unhandled callback query from admin {user_info}: data={data!r}")
                 return
 
             # Format: set_status:<login>:<status>
@@ -559,27 +569,27 @@ class PeerCheckerBot:
         )
         def handle_unhandled_messages(message: types.Message) -> None:
             user_id = message.from_user.id if message.from_user else 0
-            username = f"@{message.from_user.username}" if message.from_user and message.from_user.username else "N/A"
+            user_info = _format_user_info(message.from_user)
             chat_id = message.chat.id if message.chat else 0
             chat_type = message.chat.type if message.chat else "unknown"
             msg_text = message.text or message.caption or f"content_type={message.content_type}"
 
             if user_id not in self.config.TELEGRAM_ADMIN_IDS:
                 logger.warning(
-                    f"Unauthorized message attempt by user_id {user_id} ({username}) in chat {chat_id} ({chat_type}): {msg_text!r}"
+                    f"Unauthorized message attempt by {user_info} in chat {chat_id} ({chat_type}): {msg_text!r}"
                 )
             else:
                 logger.info(
-                    f"Unhandled message from admin user_id {user_id} ({username}) in chat {chat_id} ({chat_type}): {msg_text!r}"
+                    f"Unhandled message from admin {user_info} in chat {chat_id} ({chat_type}): {msg_text!r}"
                 )
 
         @self.bot.inline_handler(func=lambda query: True)
         def handle_inline_queries(query: types.InlineQuery) -> None:
             user_id = query.from_user.id if query.from_user else 0
-            username = f"@{query.from_user.username}" if query.from_user and query.from_user.username else "N/A"
+            user_info = _format_user_info(query.from_user)
             if user_id not in self.config.TELEGRAM_ADMIN_IDS:
                 logger.warning(
-                    f"Unauthorized inline query attempt by user_id {user_id} ({username}): query={query.query!r}"
+                    f"Unauthorized inline query attempt by {user_info}: query={query.query!r}"
                 )
             try:
                 self.bot.answer_inline_query(query.id, [])

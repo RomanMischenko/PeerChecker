@@ -63,9 +63,21 @@ def test_handle_start_unauthorized_empty_admin_list(bot_app):
     bot_app.bot.reply_to.assert_not_called()
 
 
+def test_format_user_info_helpers():
+    from app.bot import _format_user_info
+    u1 = types.User(id=123, is_bot=False, first_name="Ivan", last_name="Petrov", username="ivan_p")
+    u2 = types.User(id=456, is_bot=False, first_name="Anna", username=None)
+    u3 = None
+
+    assert _format_user_info(u1) == "user_id 123 (name: 'Ivan Petrov', username: '@ivan_p')"
+    assert _format_user_info(u2) == "user_id 456 (name: 'Anna', username: 'no @username')"
+    assert _format_user_info(u3) == "user_id 0 (name: N/A, username: N/A)"
+
+
 def test_unhandled_message_unauthorized(bot_app):
     msg = MagicMock()
     msg.from_user.id = 99999
+    msg.from_user.full_name = "Hacker User"
     msg.from_user.username = "hacker"
     msg.chat.id = 99999
     msg.chat.type = "private"
@@ -80,6 +92,7 @@ def test_unhandled_message_unauthorized(bot_app):
         assert mock_warn.called
         assert "Unauthorized message attempt" in mock_warn.call_args[0][0]
         assert "99999" in mock_warn.call_args[0][0]
+        assert "Hacker User" in mock_warn.call_args[0][0]
         assert "@hacker" in mock_warn.call_args[0][0]
         bot_app.bot.reply_to.assert_not_called()
 
