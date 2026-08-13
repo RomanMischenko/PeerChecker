@@ -124,6 +124,7 @@ class PeerCheckerBot:
                 "/status — Статус работы бота и статистика базы данных\n"
                 "/peers — Список пиров из БД (/peers verified, /peers 604)\n"
                 "/export — Экспорт текущих пиров в .txt файлы по трайбам\n"
+                "/export_verified_logins — Экспорт списка одобренных пиров (по одному на строку, A-Z)\n"
                 "/peer <login> — Карточка пира с возможностью смены статуса\n"
                 "/recheck <login> — Ручная перепроверка пира по API с обновлением статуса в БД\n"
             )
@@ -460,6 +461,40 @@ class PeerCheckerBot:
             except Exception as e:
                 logger.error(f"Error handling /export: {e}", exc_info=True)
                 self.bot.reply_to(message, f"❌ Ошибка при экспорте пиров: {e}")
+
+        @self.bot.message_handler(commands=["export_verified_logins", "exportverifiedlogins"])
+        @admin_only
+        def handle_export_verified_logins(message: types.Message) -> None:
+            try:
+                verified_peers = self.storage.get_filtered_peers(status="VERIFIED")
+                if not verified_peers:
+                    self.bot.reply_to(
+                        message,
+                        "ℹ️ **Экспорт завершен:** В базе данных нет одобренных пиров (VERIFIED).",
+                        parse_mode="Markdown",
+                    )
+                    return
+
+                logins = sorted([p["login"] for p in verified_peers], key=str.lower)
+                temp_dir = tempfile.mkdtemp()
+                file_path = os.path.join(temp_dir, "verified_logins.txt")
+                try:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        for login in logins:
+                            f.write(f"{login}\n")
+
+                    with open(file_path, "rb") as doc:
+                        self.bot.send_document(
+                            message.chat.id,
+                            doc,
+                            caption=f"✅ **Экспорт завершен:** Список одобренных пиров ({len(logins)} шт.)",
+                            parse_mode="Markdown",
+                        )
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.error(f"Error handling /export_verified_logins: {e}", exc_info=True)
+                self.bot.reply_to(message, f"❌ Ошибка при экспорте одобренных пиров: {e}")
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("set_status:"))
         def handle_status_callback(call: types.CallbackQuery) -> None:

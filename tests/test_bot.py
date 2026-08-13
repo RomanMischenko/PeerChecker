@@ -227,6 +227,65 @@ def test_handle_export_skipped_wave_only(bot_app):
     assert bot_app.bot.send_document.called
 
 
+def test_handle_export_verified_logins_empty(bot_app):
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/export_verified_logins"
+
+    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"]["commands"]][0]
+    bot_app.bot.reply_to = MagicMock()
+    handler["function"](msg)
+
+    assert bot_app.bot.reply_to.called
+    assert "В базе данных нет одобренных пиров" in bot_app.bot.reply_to.call_args[0][1]
+
+
+def test_handle_export_verified_logins_success(bot_app):
+    bot_app.storage.save_peer({
+        "login": "zebra",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "VERIFIED",
+        "xp": 100,
+        "logtime": 0.0,
+    })
+    bot_app.storage.save_peer({
+        "login": "alpha",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "VERIFIED",
+        "xp": 200,
+        "logtime": 0.0,
+    })
+    bot_app.storage.save_peer({
+        "login": "beta",
+        "tribe_id": 604,
+        "tribe_name": "Northern",
+        "status": "SUSPICIOUS",
+        "xp": 50,
+        "logtime": 0.0,
+    })
+
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/export_verified_logins"
+
+    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"]["commands"]][0]
+    bot_app.bot.send_document = MagicMock()
+    
+    file_content_captured = []
+
+    def mock_send_doc(chat_id, doc, caption=None, parse_mode=None):
+        file_content_captured.append(doc.read().decode("utf-8"))
+
+    bot_app.bot.send_document.side_effect = mock_send_doc
+    handler["function"](msg)
+
+    assert bot_app.bot.send_document.called
+    assert len(file_content_captured) == 1
+    assert file_content_captured[0] == "alpha\nzebra\n"
+
+
 def test_handle_status_callback_peer_not_found(bot_app):
     bot_app.bot.answer_callback_query = MagicMock()
     call = MagicMock()
