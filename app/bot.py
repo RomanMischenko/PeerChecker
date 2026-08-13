@@ -103,10 +103,14 @@ class PeerCheckerBot:
             """Decorator to restrict bot commands to authorized admin Telegram User IDs."""
             @functools.wraps(func)
             def wrapper(message: types.Message, *args: Any, **kwargs: Any) -> Any:
-                user_id = message.from_user.id
-                if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
-                    logger.warning(f"Unauthorized access attempt by user_id {user_id}")
-                    self.bot.reply_to(message, "У вас нет прав для управления этим ботом.")
+                user_id = message.from_user.id if message.from_user else 0
+                if user_id not in self.config.TELEGRAM_ADMIN_IDS:
+                    username = f"@{message.from_user.username}" if message.from_user and message.from_user.username else "N/A"
+                    cmd_text = message.text or message.caption or ""
+                    chat_id = message.chat.id if message.chat else 0
+                    logger.warning(
+                        f"Unauthorized command attempt by user_id {user_id} ({username}) in chat {chat_id}: {cmd_text!r}"
+                    )
                     return None
                 return func(message, *args, **kwargs)
             return wrapper
@@ -496,18 +500,21 @@ class PeerCheckerBot:
                 logger.error(f"Error handling /export_verified_logins: {e}", exc_info=True)
                 self.bot.reply_to(message, f"❌ Ошибка при экспорте одобренных пиров: {e}")
 
-        @self.bot.callback_query_handler(func=lambda call: call.data.startswith("set_status:"))
+        @self.bot.callback_query_handler(func=lambda call: True)
         def handle_status_callback(call: types.CallbackQuery) -> None:
-            user_id = call.from_user.id
-            if self.config.TELEGRAM_ADMIN_IDS and user_id not in self.config.TELEGRAM_ADMIN_IDS:
-                try:
-                    self.bot.answer_callback_query(call.id, "⛔ Нет прав доступа.", show_alert=True)
-                except Exception:
-                    pass
+            user_id = call.from_user.id if call.from_user else 0
+            username = f"@{call.from_user.username}" if call.from_user and call.from_user.username else "N/A"
+            data = call.data or ""
+            if user_id not in self.config.TELEGRAM_ADMIN_IDS:
+                logger.warning(f"Unauthorized callback query attempt by user_id {user_id} ({username}): data={data!r}")
+                return
+
+            if not data.startswith("set_status:"):
+                logger.info(f"Unhandled callback query from admin user_id {user_id} ({username}): data={data!r}")
                 return
 
             # Format: set_status:<login>:<status>
-            parts = call.data.split(":")
+            parts = data.split(":")
             if len(parts) == 3:
                 login, status = parts[1], parts[2]
                 try:
@@ -542,6 +549,42 @@ class PeerCheckerBot:
                     self.bot.answer_callback_query(call.id, "⚠️ Ошибка формата данных.")
                 except Exception:
                     pass
+
+        @self.bot.message_handler(
+            func=lambda msg: True,
+            content_types=[
+                "text", "audio", "document", "photo", "sticker", "video",
+                "video_note", "voice", "location", "contact", "new_chat_members", "left_chat_member"
+            ]
+        )
+        def handle_unhandled_messages(message: types.Message) -> None:
+            user_id = message.from_user.id if message.from_user else 0
+            username = f"@{message.from_user.username}" if message.from_user and message.from_user.username else "N/A"
+            chat_id = message.chat.id if message.chat else 0
+            chat_type = message.chat.type if message.chat else "unknown"
+            msg_text = message.text or message.caption or f"content_type={message.content_type}"
+
+            if user_id not in self.config.TELEGRAM_ADMIN_IDS:
+                logger.warning(
+                    f"Unauthorized message attempt by user_id {user_id} ({username}) in chat {chat_id} ({chat_type}): {msg_text!r}"
+                )
+            else:
+                logger.info(
+                    f"Unhandled message from admin user_id {user_id} ({username}) in chat {chat_id} ({chat_type}): {msg_text!r}"
+                )
+
+        @self.bot.inline_handler(func=lambda query: True)
+        def handle_inline_queries(query: types.InlineQuery) -> None:
+            user_id = query.from_user.id if query.from_user else 0
+            username = f"@{query.from_user.username}" if query.from_user and query.from_user.username else "N/A"
+            if user_id not in self.config.TELEGRAM_ADMIN_IDS:
+                logger.warning(
+                    f"Unauthorized inline query attempt by user_id {user_id} ({username}): query={query.query!r}"
+                )
+            try:
+                self.bot.answer_inline_query(query.id, [])
+            except Exception:
+                pass
 
     def _build_peer_card_content(self, peer: dict[str, Any]) -> tuple[str, types.InlineKeyboardMarkup]:
         """Format peer card text and inline buttons."""

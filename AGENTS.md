@@ -50,6 +50,12 @@ A peer is evaluated based on three strict criteria:
 - Formats log entries with timestamps (`%Y-%m-%d %H:%M:%S`), log levels, logger module names, filenames, and function names.
 - Filters out verbose info noise from third-party libraries (e.g. `telebot` log level set to `WARNING`).
 
+### 5. Admin Authorization & Stealth Security (`admin_only`)
+- Access to bot commands, inline queries, and callback queries is strictly restricted to Telegram user IDs listed in `TELEGRAM_ADMIN_IDS`.
+- Requests from unauthorized users (commands, random text, media, inline queries, callback queries) are silently dropped without sending any reply or alert (simulating an unresponsive/dead bot for unauthorized senders).
+- Detailed warning logs (`logger.warning`) are recorded for every unauthorized attempt, capturing user ID, Telegram username, chat ID, chat type, and message/command/query payload.
+- Security policy is fail-closed: if `TELEGRAM_ADMIN_IDS` is empty or unconfigured, all incoming requests and callbacks are rejected.
+
 ---
 
 ## Important Constraints & Guidelines for AI Agents

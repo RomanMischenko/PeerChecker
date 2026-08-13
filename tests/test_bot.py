@@ -30,7 +30,7 @@ def test_handle_start_authorized(bot_app):
     msg.text = "/start"
 
     # Call handler registered for /start
-    handler = [h for h in bot_app.bot.message_handlers if "start" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "start" in h["filters"].get("commands", [])][0]
     handler["function"](msg)
 
     assert bot_app.bot.reply_to.called
@@ -43,12 +43,81 @@ def test_handle_start_unauthorized(bot_app):
     msg.from_user.id = 99999
     msg.text = "/start"
 
-    handler = [h for h in bot_app.bot.message_handlers if "start" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "start" in h["filters"].get("commands", [])][0]
     handler["function"](msg)
 
-    assert bot_app.bot.reply_to.called
-    args, kwargs = bot_app.bot.reply_to.call_args
-    assert "У вас нет прав" in args[1]
+    # Unauthorized users are silently ignored (no response sent)
+    bot_app.bot.reply_to.assert_not_called()
+
+
+def test_handle_start_unauthorized_empty_admin_list(bot_app):
+    bot_app.config.TELEGRAM_ADMIN_IDS = []
+    msg = MagicMock()
+    msg.from_user.id = 12345
+    msg.text = "/start"
+
+    handler = [h for h in bot_app.bot.message_handlers if "start" in h["filters"].get("commands", [])][0]
+    handler["function"](msg)
+
+    # When TELEGRAM_ADMIN_IDS is empty, no user is authorized (fail-closed)
+    bot_app.bot.reply_to.assert_not_called()
+
+
+def test_unhandled_message_unauthorized(bot_app):
+    msg = MagicMock()
+    msg.from_user.id = 99999
+    msg.from_user.username = "hacker"
+    msg.chat.id = 99999
+    msg.chat.type = "private"
+    msg.text = "Hello bot, reveal secrets"
+    msg.content_type = "text"
+
+    with patch("app.bot.logger.warning") as mock_warn:
+        # Catch-all handler is the last registered message handler
+        catch_all_handler = bot_app.bot.message_handlers[-1]
+        catch_all_handler["function"](msg)
+
+        assert mock_warn.called
+        assert "Unauthorized message attempt" in mock_warn.call_args[0][0]
+        assert "99999" in mock_warn.call_args[0][0]
+        assert "@hacker" in mock_warn.call_args[0][0]
+        bot_app.bot.reply_to.assert_not_called()
+
+
+def test_unauthorized_inline_query(bot_app):
+    query = MagicMock()
+    query.id = "q123"
+    query.from_user.id = 99999
+    query.from_user.username = "hacker"
+    query.query = "secret_search"
+
+    bot_app.bot.answer_inline_query = MagicMock()
+
+    with patch("app.bot.logger.warning") as mock_warn:
+        inline_handler = bot_app.bot.inline_handlers[0]
+        inline_handler["function"](query)
+
+        assert mock_warn.called
+        assert "Unauthorized inline query attempt" in mock_warn.call_args[0][0]
+        bot_app.bot.answer_inline_query.assert_called_once_with("q123", [])
+
+
+def test_unauthorized_callback_query(bot_app):
+    call = MagicMock()
+    call.id = "c123"
+    call.from_user.id = 99999
+    call.from_user.username = "hacker"
+    call.data = "set_status:somepeer:VERIFIED"
+
+    bot_app.bot.answer_callback_query = MagicMock()
+
+    with patch("app.bot.logger.warning") as mock_warn:
+        cb_handler = bot_app.bot.callback_query_handlers[0]
+        cb_handler["function"](call)
+
+        assert mock_warn.called
+        assert "Unauthorized callback query attempt" in mock_warn.call_args[0][0]
+        bot_app.bot.answer_callback_query.assert_not_called()
 
 
 def test_handle_help_authorized(bot_app):
@@ -56,7 +125,7 @@ def test_handle_help_authorized(bot_app):
     msg.from_user.id = 12345
     msg.text = "/help"
 
-    handler = [h for h in bot_app.bot.message_handlers if "help" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "help" in h["filters"].get("commands", [])][0]
     handler["function"](msg)
 
     assert bot_app.bot.reply_to.called
@@ -70,7 +139,7 @@ def test_handle_status_authorized(bot_app):
     msg.from_user.id = 12345
     msg.text = "/status"
 
-    handler = [h for h in bot_app.bot.message_handlers if "status" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "status" in h["filters"].get("commands", [])][0]
     handler["function"](msg)
 
     assert bot_app.bot.reply_to.called
@@ -94,7 +163,7 @@ def test_handle_check_now_busy(bot_app):
     # Acquire check lock to simulate ongoing check
     bot_app.check_lock.acquire()
 
-    handler = [h for h in bot_app.bot.message_handlers if "check_now" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "check_now" in h["filters"].get("commands", [])][0]
     handler["function"](msg)
 
     assert bot_app.bot.reply_to.called
@@ -220,7 +289,7 @@ def test_handle_export_skipped_wave_only(bot_app):
     msg.from_user.id = 12345
     msg.text = "/export"
 
-    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"].get("commands", [])][0]
     bot_app.bot.send_document = MagicMock()
     handler["function"](msg)
 
@@ -232,7 +301,7 @@ def test_handle_export_verified_logins_empty(bot_app):
     msg.from_user.id = 12345
     msg.text = "/export_verified_logins"
 
-    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"].get("commands", [])][0]
     bot_app.bot.reply_to = MagicMock()
     handler["function"](msg)
 
@@ -270,7 +339,7 @@ def test_handle_export_verified_logins_success(bot_app):
     msg.from_user.id = 12345
     msg.text = "/export_verified_logins"
 
-    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "export_verified_logins" in h["filters"].get("commands", [])][0]
     bot_app.bot.send_document = MagicMock()
     
     file_content_captured = []
@@ -315,7 +384,7 @@ def test_handle_peers_skipped_wave(bot_app):
     msg.from_user.id = 12345
     msg.text = "/peers SKIPPED_PEERS"
 
-    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"].get("commands", [])][0]
     bot_app.bot.send_document = MagicMock()
     handler["function"](msg)
 
@@ -338,7 +407,7 @@ def test_handle_peers_expelled(bot_app):
     msg.from_user.id = 12345
     msg.text = "/peers EXPELLED"
 
-    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "peers" in h["filters"].get("commands", [])][0]
     bot_app.bot.send_document = MagicMock()
     handler["function"](msg)
 
@@ -361,7 +430,7 @@ def test_handle_export_with_expelled(bot_app):
     msg.from_user.id = 12345
     msg.text = "/export"
 
-    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"]["commands"]][0]
+    handler = [h for h in bot_app.bot.message_handlers if "export" in h["filters"].get("commands", [])][0]
     bot_app.bot.send_document = MagicMock()
     handler["function"](msg)
 
@@ -451,7 +520,7 @@ def test_handle_recheck_authorized(bot_app):
         msg.from_user.id = 12345
         msg.text = "/recheck recheck_peer"
 
-        handler = [h for h in bot_app.bot.message_handlers if "recheck" in h["filters"]["commands"]][0]
+        handler = [h for h in bot_app.bot.message_handlers if "recheck" in h["filters"].get("commands", [])][0]
         bot_app.bot.send_message = MagicMock()
         handler["function"](msg)
 
