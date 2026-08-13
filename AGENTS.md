@@ -63,6 +63,7 @@ A peer is evaluated based on three strict criteria:
      - `FIX:` — Fixing bugs, errors, or defects.
      - `RM:` — Removing deprecated code, files, or features.
      - `DOC:` — Documentation updates (`README.md`, `AGENTS.md`, docstrings) without logic changes.
+   - Avoid tautology between prefix and description (e.g. write `ADD: /export_verified_logins command...` instead of `ADD: Add export_verified_logins command...`).
 
 2. **README Formatting Rule:**
    - Do NOT use emojis in `README.md`. Keep documentation in plain, clean markdown.
