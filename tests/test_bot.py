@@ -431,6 +431,13 @@ def test_manual_scan_sends_empty_notifications(bot_app):
         assert "Новых/восстановленных логинов на платформе не обнаружено" in bot_app._send_to_admins.call_args[0][0]
 
 
+def test_extract_wave_name():
+    from app.bot import _extract_wave_name
+    assert _extract_wave_name({"class_name": "26_08_NN"}) == "26_08_NN"
+    assert _extract_wave_name({"details": {"info": {"className": "26_04_NN"}}}) == "26_04_NN"
+    assert _extract_wave_name({}) == "Н/Д"
+
+
 
 
 

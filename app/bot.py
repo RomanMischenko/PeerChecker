@@ -33,6 +33,18 @@ def escape_code_block(text: str) -> str:
     return text.replace("`", "'")
 
 
+def _extract_wave_name(p: dict[str, Any]) -> str:
+    """Extract wave / className string from peer dictionary or details_json."""
+    if p.get("class_name"):
+        return str(p["class_name"])
+    details = p.get("details")
+    if isinstance(details, dict):
+        info = details.get("info")
+        if isinstance(info, dict) and info.get("className"):
+            return str(info["className"])
+    return "Н/Д"
+
+
 def chunk_text(text: str, max_length: int = 4000) -> list[str]:
     """Split text into chunks of maximum max_length without breaking markdown lines if possible."""
     if not text:
@@ -325,7 +337,7 @@ class PeerCheckerBot:
                         for p in peers:
                             manual_str = " [ручной статус]" if p.get("is_manual") else ""
                             f.write(
-                                f"• {p['login']} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
+                                f"• {p['login']} | Волна: {_extract_wave_name(p)} | Трайб: {p['tribe_name']} (ID {p['tribe_id']}) | "
                                 f"Статус: {p['status']}{manual_str} | XP: {p['xp']}\n"
                             )
                             if p.get("suspicion_reason"):
@@ -393,7 +405,7 @@ class PeerCheckerBot:
                                 f.write(f"=== Проверенные пиры (VERIFIED) — Трайб {tname} (ID {tid}) ===\n")
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in verified_peers:
-                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']}\n")
+                                    f.write(f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n")
                             files_to_send.append(v_path)
 
                         if suspicious_peers:
@@ -403,7 +415,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in suspicious_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)
@@ -415,7 +427,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in skipped_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Волна не настроена или ошибка API')}\n\n"
                                     )
                             files_to_send.append(k_path)
@@ -427,7 +439,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата: {now_str}\n\n")
                                 for p in expelled_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Отчислен')}\n\n"
                                     )
                             files_to_send.append(e_path)
@@ -730,7 +742,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in t_exp:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p.get('xp', 0)}\n"
                                         f"  Причина: {p.get('suspicion_reason', 'Отчислен / выбыл из трайба')}\n\n"
                                     )
                             expelled_files.append(e_path)
@@ -778,7 +790,7 @@ class PeerCheckerBot:
                                         f.write(f"Дата проверки: {now_str}\n\n")
                                         for p in t_skp:
                                             f.write(
-                                                f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
+                                                f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p.get('xp', 0)}\n"
                                                 f"  Причина: {p.get('suspicion_reason_text') or p.get('suspicion_reason') or 'Неизвестно'}\n\n"
                                             )
                                     skipped_files.append(k_path)
@@ -831,7 +843,7 @@ class PeerCheckerBot:
                                 f.write(f"=== Список проверенных пиров (VERIFIED) — Трайб {tname} ===\n")
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in verified_peers:
-                                    f.write(f"• Логин: {p['login']} | XP: {p['xp']}\n")
+                                    f.write(f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n")
                             files_to_send.append(v_path)
 
                         # Suspicious file
@@ -842,7 +854,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in suspicious_peers:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p['xp']}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p['xp']}\n"
                                         f"  Причина: {p.get('suspicion_reason_text', 'Неизвестно')}\n\n"
                                     )
                             files_to_send.append(s_path)
@@ -855,7 +867,7 @@ class PeerCheckerBot:
                                 f.write(f"Дата проверки: {now_str}\n\n")
                                 for p in tskipped:
                                     f.write(
-                                        f"• Логин: {p['login']} | XP: {p.get('xp', 0)}\n"
+                                        f"• Логин: {p['login']} | Волна: {_extract_wave_name(p)} | XP: {p.get('xp', 0)}\n"
                                         f"  Причина: {p.get('suspicion_reason_text') or p.get('suspicion_reason') or 'Неизвестно'}\n\n"
                                     )
                             files_to_send.append(k_path)
