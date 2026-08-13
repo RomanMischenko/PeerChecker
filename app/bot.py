@@ -530,6 +530,7 @@ class PeerCheckerBot:
 
         text = (
             f"👤 **Карточка пира `{escape_code_block(login)}`**\n\n"
+            f"• **Волна:** `{escape_code_block(_extract_wave_name(peer))}`\n"
             f"• **Трайб:** {escape_markdown(peer['tribe_name'])} (ID {peer['tribe_id']})\n"
             f"• **Статус:** {status_emoji}{manual_flag}\n"
             f"• **Суммарный XP:** {peer.get('xp', 0)}\n"
