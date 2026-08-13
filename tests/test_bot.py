@@ -402,6 +402,36 @@ def test_handle_recheck_authorized(bot_app):
         assert peer_after["xp"] == 50
 
 
+def test_background_scan_suppresses_empty_notifications(bot_app):
+    """Test that background monitoring scan with no changes does NOT send Telegram notifications."""
+    with patch("app.bot.S21ApiClient") as mock_api_cls:
+        mock_api = MagicMock()
+        mock_api_cls.return_value.__enter__.return_value = mock_api
+        mock_api.get_coalition_participants.return_value = []
+
+        bot_app._send_to_admins = MagicMock()
+        bot_app.run_check_and_notify(is_background=True)
+
+        # Background scan with no changes should NOT call _send_to_admins
+        bot_app._send_to_admins.assert_not_called()
+
+
+def test_manual_scan_sends_empty_notifications(bot_app):
+    """Test that manual scan (/check_now, is_background=False) DOES send notification even if no changes occur."""
+    with patch("app.bot.S21ApiClient") as mock_api_cls:
+        mock_api = MagicMock()
+        mock_api_cls.return_value.__enter__.return_value = mock_api
+        mock_api.get_coalition_participants.return_value = []
+
+        bot_app._send_to_admins = MagicMock()
+        bot_app.run_check_and_notify(is_background=False)
+
+        # Manual scan should call _send_to_admins even when there are 0 new peers
+        bot_app._send_to_admins.assert_called_once()
+        assert "Новых/восстановленных логинов на платформе не обнаружено" in bot_app._send_to_admins.call_args[0][0]
+
+
+
 
 
 

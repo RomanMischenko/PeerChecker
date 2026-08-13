@@ -750,7 +750,10 @@ class PeerCheckerBot:
                         )
                         log_msg = f"Новых логинов не обнаружено (отчислено: {total_expelled_count})"
                         if total_expelled_count == 0:
-                            self._send_to_admins(report_text)
+                            if not is_background:
+                                self._send_to_admins(report_text)
+                            else:
+                                logger.info("Background scan completed with no changes. Skipping Telegram notification.")
                     else:
                         report_text = (
                             f"ℹ️ **Статус проверки пиров Школы 21**\n\n"
@@ -783,7 +786,10 @@ class PeerCheckerBot:
                             finally:
                                 shutil.rmtree(temp_dir_skipped, ignore_errors=True)
                         else:
-                            self._send_to_admins(report_text)
+                            if not is_background:
+                                self._send_to_admins(report_text)
+                            else:
+                                logger.info("Background scan completed with no changes. Skipping Telegram notification.")
 
                     self.storage.log_check_run(0, log_msg)
                     return
